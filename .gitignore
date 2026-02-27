@@ -70,6 +70,29 @@ secrets.json
 secrets.yaml
 secrets.yml
 
+# Key folders and credential stores
+keys/
+key/
+.keys/
+secrets/
+.secrets/
+vault/
+certs/
+certificates/
+
+# Token and credential files
+*token*.txt
+*TOKEN*.txt
+*credential*.txt
+*CREDENTIAL*.txt
+*secret*.txt
+*SECRET*.txt
+*.zip  # Often used to store keys
+*_key.json
+*_keys.json
+*_token.json
+*_credentials.json
+
 # =============================================================================
 # LOGS
 # =============================================================================
