@@ -25,7 +25,7 @@ vault = [
     "hvac>=2.0.0",  # HashiCorp Vault client
 ]
 aws = [
-    "boto3>=1.34.0",  # AWS Secrets Manager
+    "boto3>=1.34.0",  # AWS Secrets Manager + DynamoDB
 ]
 all = [
     "swarm-auth[redis,vault,aws]",
@@ -37,6 +37,7 @@ dev = [
     "black>=24.0.0",
     "mypy>=1.8.0",
     "ruff>=0.2.0",
+    "httpx>=0.27.0",
 ]
 
 [project.urls]
