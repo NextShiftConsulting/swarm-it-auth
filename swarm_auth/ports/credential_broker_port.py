@@ -47,12 +47,12 @@ class ProviderCredential:
     # Metadata
     expires_at: datetime
     scope: str  # What this credential can do
+    issued_to: str  # Principal ID (required field)
+
+    # Optional metadata
     session_name: Optional[str] = None
     assumed_role: Optional[str] = None
-
-    # Audit
-    issued_to: str  # Principal ID
-    issued_at: datetime = None
+    issued_at: Optional[datetime] = None
     request_id: Optional[str] = None
 
     def is_expired(self) -> bool:
@@ -95,7 +95,7 @@ class ToolRequest:
     scope_restrictions: Optional[Dict[str, Any]] = None  # Region, prefix, etc.
 
     # Audit
-    principal_id: str = None
+    principal_id: Optional[str] = None
     request_id: Optional[str] = None
 
 

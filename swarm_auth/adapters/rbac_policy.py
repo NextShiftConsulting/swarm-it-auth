@@ -46,31 +46,47 @@ class RBACPolicyAdapter(PolicyDecisionPoint):
         self._role_capabilities: Dict[UserRole, Set[str]] = {
             UserRole.ADMIN: {"*"},  # All capabilities
             UserRole.DEVELOPER: {
-                "llm.generate",
-                "llm.embed",
+                # LLM providers (format: provider.resource_type.verb)
+                "openai.chat.generate",
+                "openai.embed.create",
+                "openai.files.upload",
+                "anthropic.messages.create",
+                "huggingface.models.inference",
+                # AWS (format: aws.resource_type.verb)
                 "aws.s3.get",
                 "aws.s3.put",
+                "aws.s3.list",
+                "aws.dynamodb.read",
+                "aws.dynamodb.write",
+                # GCP (format: gcp.resource_type.verb)
                 "gcp.storage.read",
                 "gcp.storage.write",
-                "openai.chat",
-                "openai.files.upload",
-                "hf.inference",
+                "gcp.bigquery.read",
             },
             UserRole.SERVICE: {
-                "llm.generate",
-                "llm.embed",
-                "aws.s3.get",  # Read-only
+                # LLM providers (read-only equivalent)
+                "openai.chat.generate",
+                "openai.embed.create",
+                "anthropic.messages.create",
+                "huggingface.models.inference",
+                # AWS (read-only)
+                "aws.s3.get",
+                "aws.dynamodb.read",
+                # GCP (read-only)
                 "gcp.storage.read",
-                "openai.chat",
-                "hf.inference",
+                "gcp.bigquery.read",
             },
             UserRole.AUDITOR: {
-                "*.read",  # Read-only everything
+                "*.*.read",  # Read-only everything
                 "aws.s3.get",
+                "aws.dynamodb.read",
+                "aws.logs.read",
                 "gcp.storage.read",
             },
             UserRole.GUEST: {
-                "llm.generate",  # Limited LLM access
+                # Limited LLM access only
+                "openai.chat.generate",
+                "anthropic.messages.create",
             },
         }
 
