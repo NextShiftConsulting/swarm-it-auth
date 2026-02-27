@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swarm-auth"
+version = "0.1.0"
+description = "Session and credential management for Swarm-It platform (hexagonal architecture)"
+authors = [
+    {name = "Next Shift Consulting", email = "info@nextshiftconsulting.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "pyjwt>=2.8.0",
+]
+
+[project.optional-dependencies]
+redis = [
+    "redis>=5.0.0",
+]
+vault = [
+    "hvac>=2.0.0",  # HashiCorp Vault client
+]
+aws = [
+    "boto3>=1.34.0",  # AWS Secrets Manager
+]
+all = [
+    "swarm-auth[redis,vault,aws]",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/NextShiftConsulting/swarm-it-auth"
+Repository = "https://github.com/NextShiftConsulting/swarm-it-auth"
+Documentation = "https://github.com/NextShiftConsulting/swarm-it-auth/docs"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["swarm_auth*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
