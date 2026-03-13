@@ -116,7 +116,7 @@ https://mimo.xiaomi.com/
 
 ```bash
 # Test API access
-curl -X POST https://api.mimo.xiaomi.com/v1/chat/completions \
+curl -X POST https://api.xiaomimimo.com/v1/chat/completions \
   -H "Authorization: Bearer mimo_xxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -172,7 +172,7 @@ creds.store("MIMO_API_KEY", "mimo_xxxxxxxxxxxxxxxx", metadata={
     "created_by": "admin",
 })
 
-creds.store("MIMO_ENDPOINT", "https://api.mimo.xiaomi.com/v1", metadata={
+creds.store("MIMO_ENDPOINT", "https://api.xiaomimimo.com/v1", metadata={
     "description": "MiMo API base URL",
 })
 
@@ -188,7 +188,7 @@ Set credentials via environment variables:
 ```bash
 # .env or export
 export SWARM_MIMO_API_KEY=mimo_xxxxxxxxxxxxxxxx
-export SWARM_MIMO_ENDPOINT=https://api.mimo.xiaomi.com/v1
+export SWARM_MIMO_ENDPOINT=https://api.xiaomimimo.com/v1
 export SWARM_MIMO_MODEL=mimo-v2-flash
 ```
 
@@ -223,7 +223,7 @@ class MiMoCredentialBroker(CredentialBrokerPort):
     This broker validates and vends the key with usage tracking.
     """
 
-    def __init__(self, api_key: str, base_url: str = "https://api.mimo.xiaomi.com/v1"):
+    def __init__(self, api_key: str, base_url: str = "https://api.xiaomimimo.com/v1"):
         self._api_key = api_key
         self._base_url = base_url
 
@@ -313,7 +313,7 @@ class MiMoClient:
     def __init__(self, credential_prefix="SWARM_"):
         self.creds = EnvCredentialAdapter(prefix=credential_prefix)
         self.api_key = self.creds.retrieve("MIMO_API_KEY")
-        self.base_url = self.creds.retrieve("MIMO_ENDPOINT") or "https://api.mimo.xiaomi.com/v1"
+        self.base_url = self.creds.retrieve("MIMO_ENDPOINT") or "https://api.xiaomimimo.com/v1"
         self.model = self.creds.retrieve("MIMO_MODEL") or "mimo-v2-flash"
 
         if not self.api_key:
@@ -360,7 +360,7 @@ class PodcastMIMOAgent:
 
             if provider == "mimo":
                 self.api_key = self.creds.retrieve('MIMO_API_KEY')
-                self.endpoint = self.creds.retrieve('MIMO_ENDPOINT') or 'https://api.mimo.xiaomi.com/v1'
+                self.endpoint = self.creds.retrieve('MIMO_ENDPOINT') or 'https://api.xiaomimimo.com/v1'
                 self.model = self.creds.retrieve('MIMO_MODEL') or 'mimo-v2-flash'
             elif provider == "xiami":
                 # Local Ollama fallback
@@ -408,7 +408,7 @@ class PodcastMIMOAgent:
 ```bash
 # Set MiMo credentials
 export SWARM_MIMO_API_KEY=mimo_xxxxxxxxxxxxxxxx
-export SWARM_MIMO_ENDPOINT=https://api.mimo.xiaomi.com/v1
+export SWARM_MIMO_ENDPOINT=https://api.xiaomimimo.com/v1
 export SWARM_MIMO_MODEL=mimo-v2-flash
 
 # Run podcast agent with MiMo provider
@@ -430,7 +430,7 @@ python batch_regenerate_podcasts.py \
 
 ### Chat Completions Endpoint
 
-**URL**: `POST https://api.mimo.xiaomi.com/v1/chat/completions`
+**URL**: `POST https://api.xiaomimimo.com/v1/chat/completions`
 
 **Headers**:
 ```
@@ -691,7 +691,7 @@ creds = EnvCredentialAdapter(prefix="SWARM_")
 api_key = creds.retrieve("MIMO_API_KEY")
 
 response = requests.post(
-    "https://api.mimo.xiaomi.com/v1/chat/completions",
+    "https://api.xiaomimimo.com/v1/chat/completions",
     headers={"Authorization": f"Bearer {api_key}"},
     json={
         "model": "mimo-v2-flash",
@@ -718,7 +718,7 @@ creds = EnvCredentialAdapter(prefix="SWARM_")
 api_key = creds.retrieve("MIMO_API_KEY")
 
 response = requests.post(
-    "https://api.mimo.xiaomi.com/v1/chat/completions",
+    "https://api.xiaomimimo.com/v1/chat/completions",
     headers={"Authorization": f"Bearer {api_key}"},
     json={
         "model": "mimo-v2-flash",
@@ -742,7 +742,7 @@ response = requests.post(
 echo $SWARM_MIMO_API_KEY
 
 # Test with curl
-curl -X POST https://api.mimo.xiaomi.com/v1/chat/completions \
+curl -X POST https://api.xiaomimimo.com/v1/chat/completions \
   -H "Authorization: Bearer $SWARM_MIMO_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"mimo-v2-flash","messages":[{"role":"user","content":"test"}]}'
