@@ -8,6 +8,10 @@ Authentication & Sessions:
 - MemorySessionAdapter: In-memory sessions (testing)
 - DynamoDBSessionAdapter: AWS DynamoDB sessions
 
+Token Blacklist:
+- RedisBlacklistAdapter: Redis-backed token blacklist
+- MemoryBlacklistAdapter: In-memory token blacklist
+
 Credential Storage:
 - EnvCredentialAdapter: Environment variable credentials
 - VaultCredentialAdapter: HashiCorp Vault for secrets
@@ -29,6 +33,10 @@ from swarm_auth.adapters.redis_session import RedisSessionAdapter
 from swarm_auth.adapters.memory_session import MemorySessionAdapter
 from swarm_auth.adapters.dynamodb_session import DynamoDBSessionAdapter
 
+# Token Blacklist
+from swarm_auth.adapters.redis_blacklist import RedisBlacklistAdapter
+from swarm_auth.adapters.memory_blacklist import MemoryBlacklistAdapter
+
 # Credential Storage
 from swarm_auth.adapters.env_credential import EnvCredentialAdapter
 from swarm_auth.adapters.vault_credential import VaultCredentialAdapter
@@ -49,6 +57,9 @@ __all__ = [
     "RedisSessionAdapter",
     "MemorySessionAdapter",
     "DynamoDBSessionAdapter",
+    # Token Blacklist
+    "RedisBlacklistAdapter",
+    "MemoryBlacklistAdapter",
     # Credential Storage
     "EnvCredentialAdapter",
     "VaultCredentialAdapter",

@@ -4,8 +4,9 @@ JWT Authentication Adapter - Implements AuthenticationPort with JWT tokens.
 
 import jwt
 from datetime import datetime, timedelta
-from typing import Optional, Set
+from typing import Optional
 from swarm_auth.ports.auth_port import AuthenticationPort
+from swarm_auth.ports.blacklist_port import BlacklistPort
 from swarm_auth.domain.user import User, UserRole
 
 
@@ -14,7 +15,7 @@ class JWTAuthAdapter(AuthenticationPort):
     JWT-based authentication adapter.
 
     Uses PyJWT for token creation and verification.
-    Supports token blacklisting via Redis (falls back to in-memory if unavailable).
+    Supports token blacklisting via pluggable BlacklistPort adapter.
     """
 
     def __init__(
@@ -22,9 +23,7 @@ class JWTAuthAdapter(AuthenticationPort):
         secret: str,
         algorithm: str = "HS256",
         issuer: str = "swarm-it",
-        redis_client=None,
-        blacklist_prefix: str = "swarm:jwt:blacklist:",
-        blacklist_ttl: int = 86400,  # 24 hours default
+        blacklist_adapter: Optional[BlacklistPort] = None,
     ):
         """
         Initialize JWT adapter.
@@ -33,79 +32,18 @@ class JWTAuthAdapter(AuthenticationPort):
             secret: JWT signing secret
             algorithm: JWT algorithm (default HS256)
             issuer: Token issuer claim
-            redis_client: Optional Redis client for distributed blacklist
-            blacklist_prefix: Redis key prefix for blacklisted tokens
-            blacklist_ttl: TTL for blacklisted tokens in seconds (default 24h)
+            blacklist_adapter: Optional blacklist adapter (defaults to MemoryBlacklistAdapter)
         """
         self._secret = secret
         self._algorithm = algorithm
         self._issuer = issuer
-        self._redis = redis_client
-        self._blacklist_prefix = blacklist_prefix
-        self._blacklist_ttl = blacklist_ttl
-        self._memory_blacklist: Set[str] = set()  # Fallback for when Redis unavailable
-        self._use_redis = False  # Track if Redis is available
 
-    def _get_redis(self):
-        """Lazy load Redis client."""
-        if self._redis is None:
-            try:
-                import redis
-                self._redis = redis.Redis(
-                    host="localhost",
-                    port=6379,
-                    db=0,
-                    decode_responses=True,
-                )
-                self._use_redis = True
-            except ImportError:
-                # Redis not installed, use in-memory fallback
-                self._use_redis = False
-                return None
-            except Exception:
-                # Redis connection failed, use in-memory fallback
-                self._use_redis = False
-                return None
+        # Use provided blacklist adapter or default to in-memory
+        if blacklist_adapter is None:
+            from swarm_auth.adapters.memory_blacklist import MemoryBlacklistAdapter
+            self._blacklist = MemoryBlacklistAdapter()
         else:
-            self._use_redis = True
-        return self._redis
-
-    def _blacklist_key(self, token: str) -> str:
-        """Generate Redis key for blacklisted token."""
-        # Use hash of token to avoid storing full token in key
-        import hashlib
-        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-        return f"{self._blacklist_prefix}{token_hash}"
-
-    def _is_blacklisted(self, token: str) -> bool:
-        """Check if token is blacklisted (Redis or in-memory)."""
-        redis = self._get_redis()
-        if redis and self._use_redis:
-            try:
-                key = self._blacklist_key(token)
-                return redis.exists(key) > 0
-            except Exception:
-                # Redis error, fallback to memory
-                return token in self._memory_blacklist
-        else:
-            return token in self._memory_blacklist
-
-    def _add_to_blacklist(self, token: str) -> bool:
-        """Add token to blacklist (Redis or in-memory)."""
-        redis = self._get_redis()
-        if redis and self._use_redis:
-            try:
-                key = self._blacklist_key(token)
-                # Set with TTL (tokens auto-expire after blacklist_ttl)
-                redis.setex(key, self._blacklist_ttl, "1")
-                return True
-            except Exception:
-                # Redis error, fallback to memory
-                self._memory_blacklist.add(token)
-                return True
-        else:
-            self._memory_blacklist.add(token)
-            return True
+            self._blacklist = blacklist_adapter
 
     def authenticate(self, token: str) -> Optional[User]:
         """
@@ -117,7 +55,7 @@ class JWTAuthAdapter(AuthenticationPort):
         Returns:
             User if valid, None if invalid
         """
-        if not token or self._is_blacklisted(token):
+        if not token or self._blacklist.is_blacklisted(token):
             return None
 
         try:
@@ -184,7 +122,7 @@ class JWTAuthAdapter(AuthenticationPort):
         Returns:
             True if valid, False otherwise
         """
-        if self._is_blacklisted(token):
+        if self._blacklist.is_blacklisted(token):
             return False
 
         try:
@@ -208,8 +146,23 @@ class JWTAuthAdapter(AuthenticationPort):
         Returns:
             True if revoked, False if already revoked
         """
-        if self._is_blacklisted(token):
-            return False
+        # Extract expiration from token for TTL
+        try:
+            payload = jwt.decode(
+                token,
+                self._secret,
+                algorithms=[self._algorithm],
+                issuer=self._issuer,
+            )
+            exp = payload.get("exp")
+            if exp:
+                # Calculate remaining TTL
+                exp_time = datetime.fromtimestamp(exp)
+                ttl = int((exp_time - datetime.utcnow()).total_seconds())
+                if ttl > 0:
+                    return self._blacklist.add(token, ttl)
+        except jwt.InvalidTokenError:
+            pass
 
-        self._add_to_blacklist(token)
-        return True
+        # Fallback: use default TTL
+        return self._blacklist.add(token)
