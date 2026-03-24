@@ -2,15 +2,38 @@
 
 **Session and credential management for the Swarm-It platform.**
 
+**P18 Partner:** swarm-auth is the modern credential gateway alongside config_manager. All new credential access should use swarm-auth's CredentialBrokerPort pattern.
+
 Built with hexagonal (ports & adapters) architecture for maximum flexibility and testability.
 
 ## Features
 
+- **Credential Brokering (P18 v2.0)**: Tool-level credential vending with audit trails
+- **AWS Integration**: STS AssumeRole, temporary credentials, role-based access
 - **Authentication**: JWT tokens, API keys
 - **Session Management**: Redis, in-memory
 - **Credential Storage**: Environment variables, Vault (coming soon), AWS Secrets Manager (coming soon)
 - **Clean Architecture**: Ports & adapters pattern
-- **Cross-Platform**: Used by swarm-it-api, swarm-it-adk, swarm-it-discovery
+- **Cross-Platform**: Used by swarm-it-api, swarm-it-adk, swarm-it-discovery, yrsn
+
+## Architecture Role
+
+swarm-auth implements the **CredentialBrokerPort** pattern for P18 v2.0 compliance:
+
+```
+yrsn/framework/config_manager.py      ← P18 v1.0 (legacy, environment-level)
+swarm-auth/CredentialBrokerPort       ← P18 v2.0 (modern, tool-level)
+```
+
+**Use swarm-auth for:**
+- Fine-grained tool/resource permissions
+- STS temporary credentials
+- Audit trails with principal tracking
+- Role assumption per tool
+
+**Use config_manager for:**
+- Simple environment config
+- Legacy code during migration
 
 ## Installation
 
