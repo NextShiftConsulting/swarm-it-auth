@@ -14,6 +14,9 @@ Token Blacklist:
 
 Credential Storage:
 - EnvCredentialAdapter: Environment variable credentials
+- DotEnvAdapter: .env file credentials (auto-discovery)
+- KMSAdapter: AWS KMS encrypted credentials
+- K8sSecretsAdapter: Kubernetes mounted secrets
 - VaultCredentialAdapter: HashiCorp Vault for secrets
 - AWSSecretsAdapter: AWS Secrets Manager
 
@@ -39,6 +42,9 @@ from swarm_auth.adapters.memory_blacklist import MemoryBlacklistAdapter
 
 # Credential Storage
 from swarm_auth.adapters.env_credential import EnvCredentialAdapter
+from swarm_auth.adapters.dotenv_credential import DotEnvAdapter
+from swarm_auth.adapters.kms_credential import KMSAdapter
+from swarm_auth.adapters.k8s_credential import K8sSecretsAdapter
 from swarm_auth.adapters.vault_credential import VaultCredentialAdapter
 from swarm_auth.adapters.aws_credential import AWSSecretsAdapter
 
@@ -62,6 +68,9 @@ __all__ = [
     "MemoryBlacklistAdapter",
     # Credential Storage
     "EnvCredentialAdapter",
+    "DotEnvAdapter",
+    "KMSAdapter",
+    "K8sSecretsAdapter",
     "VaultCredentialAdapter",
     "AWSSecretsAdapter",
     # Authorization
