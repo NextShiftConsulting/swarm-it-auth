@@ -443,8 +443,8 @@ Step 2: Add rsct_mode to existing /v1/certify response
 Step 3: POST /v1/swarms/{swarm_id}/certify
 ```
 
-- [ ] **Step 1:** `POST /v1/certify/batch` - Batch certification (reduces N calls → 1)
-- [ ] **Step 2:** Add `rsct_mode` field to `/v1/certify` response (passthrough from yrsn)
+- [x] **Step 1:** `POST /v1/certify/batch` - Batch certification (reduces N calls → 1) ✓ 2026-03-31
+- [x] **Step 2:** Add `rsct_mode` field to `/v1/certify` response (passthrough from yrsn) ✓ 2026-03-31
 - [ ] **Step 3:** `POST /v1/swarms/{swarm_id}/certify` - Swarm-level certification
 
 **Phase 2: swarm-it-adk (Consume & Deprecate)**
