@@ -117,3 +117,7 @@ logs/
 # PROJECT FILES
 # =============================================================================
 CLAUDE.md
+
+# Credential protection (recursive)
+**/keys/
+**/keys/**
