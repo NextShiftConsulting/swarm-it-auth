@@ -1,0 +1,6 @@
+#!/bin/bash
+# Remove Claude attributions from commit messages
+sed -i '/Generated with.*Claude/d' "$1"
+sed -i '/Co-Authored-By: Claude/d' "$1"
+# Remove trailing blank lines
+sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
