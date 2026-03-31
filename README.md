@@ -1,39 +1,62 @@
 # Swarm-Auth
 
-**Session and credential management for the Swarm-It platform.**
+**Agent identity, credential triage, and session management for the Swarm-It platform.**
 
-**P18 Partner:** swarm-auth is the modern credential gateway alongside config_manager. All new credential access should use swarm-auth's CredentialBrokerPort pattern.
+Built with hexagonal (ports & adapters) architecture. Implements SOTA agent authentication patterns from Google ADK and Strata 8-strategies.
 
-Built with hexagonal (ports & adapters) architecture for maximum flexibility and testability.
+## P18 v4.0 - AccessScript Credential Triage
+
+```python
+from swarm_auth import get_credential, AccessScript
+
+# Simple - auto-discovers available sources
+api_key = get_credential('OPENAI_API_KEY')
+
+# Configured - explicit priority and forbidden sources
+access = AccessScript.from_config({
+    "priority": ["dotenv", "aws_secrets"],
+    "forbidden": ["kms"],  # Don't attempt in this env
+    "env_overrides": {
+        "prod": {
+            "priority": ["aws_secrets"],
+            "forbidden": ["env_var", "dotenv"],
+        }
+    }
+})
+```
+
+### Credential Sources (Priority Order)
+
+| Source | Adapter | Use Case |
+|--------|---------|----------|
+| `env_var` | `EnvCredentialAdapter` | Environment variables |
+| `dotenv` | `DotEnvAdapter` | Auto-load `.env` files |
+| `k8s_secrets` | `K8sSecretsAdapter` | Kubernetes mounted secrets |
+| `aws_secrets` | `AWSSecretsAdapter` | AWS Secrets Manager |
+| `kms` | `KMSAdapter` | AWS KMS encrypted blobs |
+| `vault` | `VaultCredentialAdapter` | HashiCorp Vault |
+
+### Forbidden Sources
+
+In locked-down environments, attempting certain sources triggers security violations:
+
+```python
+access = AccessScript.from_config({
+    "priority": ["vault"],
+    "forbidden": ["env_var", "dotenv", "kms"],  # Would trigger alerts
+    "on_forbidden": "log",  # silent | log | error
+})
+```
 
 ## Features
 
-- **Credential Brokering (P18 v2.0)**: Tool-level credential vending with audit trails
-- **AWS Integration**: STS AssumeRole, temporary credentials, role-based access
+- **AccessScript Triage**: Priority-ordered credential discovery with forbidden source enforcement
+- **Agent-Ready**: JIT provisioning, short-lived tokens, audit trails
+- **Credential Brokering**: Tool-level credential vending via CredentialBrokerPort
+- **AWS Integration**: STS AssumeRole, Secrets Manager, KMS
 - **Authentication**: JWT tokens, API keys
-- **Session Management**: Redis, in-memory
-- **Credential Storage**: Environment variables, Vault (coming soon), AWS Secrets Manager (coming soon)
-- **Clean Architecture**: Ports & adapters pattern
-- **Cross-Platform**: Used by swarm-it-api, swarm-it-adk, swarm-it-discovery, yrsn
-
-## Architecture Role
-
-swarm-auth implements the **CredentialBrokerPort** pattern for P18 v2.0 compliance:
-
-```
-yrsn/framework/config_manager.py      ← P18 v1.0 (legacy, environment-level)
-swarm-auth/CredentialBrokerPort       ← P18 v2.0 (modern, tool-level)
-```
-
-**Use swarm-auth for:**
-- Fine-grained tool/resource permissions
-- STS temporary credentials
-- Audit trails with principal tracking
-- Role assumption per tool
-
-**Use config_manager for:**
-- Simple environment config
-- Legacy code during migration
+- **Session Management**: Redis, DynamoDB, in-memory
+- **Hexagonal Architecture**: Ports & adapters for testability
 
 ## Installation
 
@@ -44,23 +67,65 @@ pip install swarm-auth
 # With Redis support
 pip install swarm-auth[redis]
 
+# With AWS support (Secrets Manager, KMS, STS)
+pip install swarm-auth[aws]
+
 # With all adapters
 pip install swarm-auth[all]
-
-# Development
-pip install swarm-auth[dev]
 ```
 
 ## Quick Start
+
+### Credential Access (P18 v4.0)
+
+```python
+from swarm_auth import get_credential, has_credential, AccessScript
+
+# Auto-discovers: env_var → dotenv → k8s → aws_secrets → kms → vault
+api_key = get_credential('OPENAI_API_KEY')
+
+# Check existence
+if has_credential('ANTHROPIC_API_KEY'):
+    claude_key = get_credential('ANTHROPIC_API_KEY')
+
+# AWS credentials helper
+from swarm_auth import get_aws_credentials
+aws = get_aws_credentials()  # Returns boto3-compatible dict
+```
+
+### Configured Triage
+
+```python
+from swarm_auth import AccessScript, SourceType
+
+# Production config - only AWS Secrets Manager
+access = AccessScript.from_config({
+    "priority": ["aws_secrets"],
+    "forbidden": ["env_var", "dotenv"],
+    "cache_ttl": 300,
+    "audit_enabled": True,
+})
+
+key = access.get('DATABASE_PASSWORD')
+
+# Check available sources
+sources = access.list_available_sources()
+print(f"Available: {[s.value for s in sources]}")
+
+# Audit log
+for entry in access.get_audit_log():
+    print(f"{entry.timestamp}: {entry.source.value} -> {entry.success}")
+```
 
 ### JWT Authentication
 
 ```python
 from swarm_auth import AuthClient, User, UserRole
 from swarm_auth.adapters import JWTAuthAdapter, MemorySessionAdapter
+import os
 
 # Initialize
-auth = JWTAuthAdapter(secret="your-secret-key")
+auth = JWTAuthAdapter(secret=os.environ["JWT_SECRET"])
 sessions = MemorySessionAdapter()
 client = AuthClient(auth=auth, sessions=sessions)
 
@@ -69,147 +134,125 @@ user = User(
     user_id="user123",
     username="alice",
     role=UserRole.DEVELOPER,
-    email="alice@example.com"
 )
 
-# Login (creates token + session)
+# Login
 result = client.login(user, ttl=3600)
 token = result["token"]
-print(f"Token: {token}")
 
-# Verify token
-verified_user = client.verify(token)
-print(f"User: {verified_user.username}, Role: {verified_user.role}")
-
-# Logout
-client.logout(token)
+# Verify
+verified = client.verify(token)
+print(f"User: {verified.username}, Role: {verified.role}")
 ```
 
-### API Key Authentication
+### Credential Brokering (Tool-Level)
 
 ```python
-from swarm_auth.adapters import APIKeyAuthAdapter
+from swarm_auth.adapters import AWSCredentialBroker
+from swarm_auth.ports.credential_broker_port import ToolRequest, ProviderType
 
-auth = APIKeyAuthAdapter()
+broker = AWSCredentialBroker(region="us-east-1")
 
-# Register user and get API key
-user = User(user_id="svc1", username="service-bot", role=UserRole.SERVICE)
-api_key = auth.register_user(user)
-print(f"API Key: {api_key}")  # Save this!
+# Request scoped credentials for specific tool
+cred = broker.vend_credential(
+    principal=agent,
+    tool_request=ToolRequest(
+        tool_name="s3_upload",
+        provider=ProviderType.AWS,
+        action="s3:PutObject",
+        resource="arn:aws:s3:::my-bucket/*",
+        max_duration=900,  # 15 minutes
+    )
+)
 
-# Later: authenticate with API key
-authenticated_user = auth.authenticate(api_key)
-print(f"Authenticated: {authenticated_user.username}")
-```
-
-### Session Management (Redis)
-
-```python
-from swarm_auth.adapters import RedisSessionAdapter
-
-# Connect to Redis
-sessions = RedisSessionAdapter(prefix="myapp:session:")
-
-# Create session
-session = sessions.create(user_id="user123", ttl=3600)
-print(f"Session ID: {session.session_id}")
-
-# Get session
-retrieved = sessions.get(session.session_id)
-print(f"Valid: {retrieved.is_valid()}")
-
-# Extend session
-sessions.extend(session.session_id, ttl=1800)
-
-# List user's sessions
-user_sessions = sessions.list_by_user("user123")
-print(f"Active sessions: {len(user_sessions)}")
-```
-
-### Credential Storage
-
-```python
-from swarm_auth.adapters import EnvCredentialAdapter
-
-creds = EnvCredentialAdapter()
-
-# Store credential
-creds.store("openai_api_key", "sk-...", metadata={
-    "description": "OpenAI API key for embeddings",
-    "rotation_policy": "90d"
-})
-
-# Retrieve credential
-api_key = creds.retrieve("openai_api_key")
-
-# List credentials
-keys = creds.list_keys(prefix="openai")
-print(f"Keys: {keys}")
+# Use temporary credentials
+import boto3
+s3 = boto3.client(
+    's3',
+    aws_access_key_id=cred.credentials['access_key_id'],
+    aws_secret_access_key=cred.credentials['secret_access_key'],
+    aws_session_token=cred.credentials['session_token'],
+)
 ```
 
 ## Architecture
 
 ```
 swarm-auth/
+├── access_script.py    # P18 v4.0 credential triage orchestration
 ├── ports/              # Interfaces (what we need)
 │   ├── auth_port.py
 │   ├── session_port.py
-│   └── credential_port.py
-├── domain/             # Business entities (pure logic)
+│   ├── credential_port.py
+│   └── credential_broker_port.py
+├── domain/             # Business entities
 │   ├── user.py
 │   ├── session.py
 │   └── credential.py
 ├── adapters/           # Implementations (how we do it)
+│   ├── dotenv_credential.py    # NEW: .env auto-load
+│   ├── kms_credential.py       # NEW: AWS KMS
+│   ├── k8s_credential.py       # NEW: Kubernetes secrets
+│   ├── env_credential.py
+│   ├── aws_credential.py
+│   ├── vault_credential.py
 │   ├── jwt_auth.py
 │   ├── api_key_auth.py
-│   ├── redis_session.py
-│   └── env_credential.py
-└── sdk/                # High-level client
+│   └── aws_credential_broker.py
+└── sdk/
     └── client.py
 ```
 
-### Hexagonal Architecture Benefits
+### Hexagonal Pattern
 
-1. **Testable**: Mock any port with a test adapter
-2. **Swappable**: Switch from JWT to OAuth without changing domain
-3. **Technology-agnostic**: Domain knows nothing about Redis, JWT, etc.
-4. **Clear boundaries**: Infrastructure vs. domain logic
-
-## Integration with swarm-it-api
-
-```python
-# swarm-it-api/main.py
-from fastapi import FastAPI, Depends, HTTPException
-from swarm_auth import AuthClient
-from swarm_auth.adapters import JWTAuthAdapter, RedisSessionAdapter
-
-app = FastAPI()
-
-# Initialize auth
-auth_client = AuthClient(
-    auth=JWTAuthAdapter(secret=os.environ["JWT_SECRET"]),
-    sessions=RedisSessionAdapter(),
-)
-
-# Dependency injection
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    user = auth_client.verify(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return user
-
-# Protected endpoint
-@app.post("/api/v1/certify")
-async def certify(
-    request: CertifyRequest,
-    user: User = Depends(get_current_user)
-):
-    # User is authenticated
-    if not user.has_permission("certify"):
-        raise HTTPException(status_code=403, detail="Permission denied")
-
-    # Process certification...
 ```
+                    ┌─────────────────────┐
+                    │    AccessScript     │  Orchestration
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+         CredentialPort   CredentialPort   CredentialPort   ← Port
+              │                │                │
+              ▼                ▼                ▼
+         DotEnvAdapter    KMSAdapter    K8sSecretsAdapter   ← Adapters
+```
+
+## Adapters
+
+### Credential Storage (CredentialPort)
+
+| Adapter | Source | Status |
+|---------|--------|--------|
+| `EnvCredentialAdapter` | Environment variables | ✅ |
+| `DotEnvAdapter` | `.env` files (auto-discovery) | ✅ |
+| `KMSAdapter` | AWS KMS encrypted blobs | ✅ |
+| `K8sSecretsAdapter` | Kubernetes mounted secrets | ✅ |
+| `AWSSecretsAdapter` | AWS Secrets Manager | ✅ |
+| `VaultCredentialAdapter` | HashiCorp Vault | ✅ |
+
+### Credential Brokers (CredentialBrokerPort)
+
+| Broker | Provider | Description |
+|--------|----------|-------------|
+| `AWSCredentialBroker` | AWS | STS AssumeRole, session policies |
+| `GCPCredentialBroker` | GCP | Workload Identity Federation |
+| `OpenAICredentialBroker` | OpenAI | Project-scoped API keys |
+
+### Authentication (AuthenticationPort)
+
+| Adapter | Method |
+|---------|--------|
+| `JWTAuthAdapter` | JWT tokens (HS256, RS256) |
+| `APIKeyAuthAdapter` | API keys (SHA-256 hashed) |
+
+### Sessions (SessionPort)
+
+| Adapter | Backend |
+|---------|---------|
+| `RedisSessionAdapter` | Redis |
+| `DynamoDBSessionAdapter` | AWS DynamoDB |
+| `MemorySessionAdapter` | In-memory (testing) |
 
 ## User Roles & Permissions
 
@@ -217,29 +260,33 @@ async def certify(
 |------|-------------|
 | `ADMIN` | All permissions |
 | `DEVELOPER` | certify, validate, read, audit |
-| `AUDITOR` | read, audit (compliance only) |
-| `SERVICE` | certify, validate, read (M2M) |
-| `GUEST` | read (limited) |
+| `AUDITOR` | read, audit |
+| `SERVICE` | certify, validate, read |
+| `GUEST` | read |
 
-## Adapters
+## Environment Configuration
 
-### Authentication
+```bash
+# Local development
+export ENVIRONMENT=dev
 
-- **JWTAuthAdapter**: JWT token-based auth (HS256, RS256)
-- **APIKeyAuthAdapter**: API key-based auth (SHA-256 hashed)
-- **OAuth2Adapter**: OAuth2 flows (coming soon)
+# Production - force AWS Secrets Manager only
+export ENVIRONMENT=prod
+```
 
-### Sessions
-
-- **RedisSessionAdapter**: Redis-backed sessions (distributed)
-- **MemorySessionAdapter**: In-memory sessions (testing only)
-- **DynamoDBSessionAdapter**: DynamoDB sessions (coming soon)
-
-### Credentials
-
-- **EnvCredentialAdapter**: Environment variables (dev only)
-- **VaultCredentialAdapter**: HashiCorp Vault (coming soon)
-- **AWSSecretsAdapter**: AWS Secrets Manager (coming soon)
+```python
+access = AccessScript.from_config({
+    "env_overrides": {
+        "dev": {
+            "priority": ["env_var", "dotenv"],
+        },
+        "prod": {
+            "priority": ["aws_secrets"],
+            "forbidden": ["env_var", "dotenv"],
+        }
+    }
+})
+```
 
 ## Testing
 
@@ -254,21 +301,12 @@ pytest --cov=swarm_auth --cov-report=html
 mypy swarm_auth
 ```
 
-## Examples
+## Related Projects
 
-See `examples/` for complete integration examples:
-
-- `basic_auth.py` - JWT authentication
-- `api_key_service.py` - Service account with API keys
-- `session_management.py` - Redis session handling
-- `fastapi_integration.py` - FastAPI middleware
+- [swarm-it-adk](https://github.com/NextShiftConsulting/swarm-it-adk) - Agent Development Kit (runtime enforcement)
+- [swarm-it-api](https://github.com/NextShiftConsulting/swarm-it-api) - RSCT certification API
+- [swarm-it-discovery](https://github.com/NextShiftConsulting/swarm-it-discovery) - Research discovery platform
 
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
-
-## Related Projects
-
-- [swarm-it-api](https://github.com/NextShiftConsulting/swarm-it-api) - RSCT certification API
-- [swarm-it-adk](https://github.com/NextShiftConsulting/swarm-it-adk) - Agent Development Kit
-- [swarm-it-discovery](https://github.com/NextShiftConsulting/swarm-it-discovery) - Research discovery platform
