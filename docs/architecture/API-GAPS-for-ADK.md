@@ -457,9 +457,9 @@ Step 3: POST /v1/swarms/{swarm_id}/certify
 
 **Phase 3: swarm-it-api (Priority 2)**
 
-- [ ] `POST /v1/consensus/compute` - True phasor coherence
+- [x] `POST /v1/consensus/compute` - True phasor coherence ✓ 2026-03-31
 - [ ] Certificate binding (signed responses or proof field)
-- [ ] `POST /v1/webhooks/register` - Webhook registration
+- [x] `POST /v1/webhooks/register` - Webhook registration ✓ 2026-03-31
 
 **Phase 4: swarm-it-api (Priority 3)**
 
