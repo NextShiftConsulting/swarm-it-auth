@@ -8,6 +8,52 @@ This document specifies the API endpoints swarm-it-api must implement for ADK to
 
 ---
 
+## Field Name Contract (Frozen)
+
+**These field names are locked before implementation. All consumers (API, ADK, telemetry) must use these exact names.**
+
+| External Name | Internal Alias | Notes |
+|---------------|----------------|-------|
+| `kappa` | `kappa_gate` | Quality gate metric; internal code may use `kappa_gate` but serialize as `kappa` |
+| `S` | `S_sup` | Stability; yrsn uses `S_sup` internally, API exposes as `S` |
+| `R` | - | Relevance (no alias) |
+| `N` | - | Noise (no alias) |
+| `rsct_mode` | `collapse_mode` | 16-mode taxonomy; ADK internal may use `collapse_mode` |
+| `decision` | `gate_decision` | EXECUTE/REJECT/BLOCK/RE_ENCODE/REPAIR |
+| `kappa_H` | - | Hallucination resistance (no alias) |
+| `kappa_L` | - | Logical consistency (no alias) |
+| `kappa_interface` | - | Agent interface compatibility (no alias) |
+
+**Serialization Rule:** At every API boundary, translate internal aliases to external names. No alias should appear in HTTP responses, events, or stored certificates.
+
+---
+
+## rsct_mode Authority
+
+**`rsct_mode` is computed by yrsn and passed through swarm-it-api unchanged.**
+
+swarm-it-api does NOT:
+- Reconstruct `rsct_mode` from RSN values
+- Apply its own mode classification logic
+- Override yrsn's mode determination
+
+swarm-it-api DOES:
+- Pass `rsct_mode` from yrsn's `YRSNCertificate` to API response
+- Include it in batch and swarm certification responses
+- Log it in audit trail
+
+This prevents drift between yrsn's authoritative mode taxonomy and any downstream reconstruction.
+
+```python
+# CORRECT: Pass through from yrsn
+response["rsct_mode"] = yrsn_certificate.rsct_mode
+
+# WRONG: Reconstruct in API
+response["rsct_mode"] = classify_mode(R, S, N)  # DO NOT DO THIS
+```
+
+---
+
 ## Priority 1: Critical Gaps
 
 ### 1.1 POST /v1/swarms/{swarm_id}/certify
@@ -385,24 +431,46 @@ GET /v1/certificates?start_time=2026-03-31T00:00:00Z
 
 ## Implementation Checklist
 
-### swarm-it-api
+### Build Order (Confirmed)
 
-- [ ] `POST /v1/swarms/{swarm_id}/certify` - Swarm-level certification
-- [ ] `POST /v1/certify/batch` - Batch certification
-- [ ] Add `rsct_mode` field to `/v1/certify` response
+This sequence gives ADK immediate delegation value before the full swarm path is finished.
+
+**Phase 1: swarm-it-api (Priority 1)**
+
+```
+Step 1: POST /v1/certify/batch
+Step 2: Add rsct_mode to existing /v1/certify response
+Step 3: POST /v1/swarms/{swarm_id}/certify
+```
+
+- [ ] **Step 1:** `POST /v1/certify/batch` - Batch certification (reduces N calls → 1)
+- [ ] **Step 2:** Add `rsct_mode` field to `/v1/certify` response (passthrough from yrsn)
+- [ ] **Step 3:** `POST /v1/swarms/{swarm_id}/certify` - Swarm-level certification
+
+**Phase 2: swarm-it-adk (Consume & Deprecate)**
+
+- [ ] Update `client.certify_batch()` to call `/v1/certify/batch`
+- [ ] Parse `rsct_mode` from API response (remove local `_classify_local()`)
+- [ ] Deprecate `local/engine.py` `_classify_local()`
+- [ ] Update `SwarmCertifier` to call `/v1/swarms/{id}/certify`
+- [ ] Mark local certification paths as deprecated
+
+**Phase 3: swarm-it-api (Priority 2)**
+
 - [ ] `POST /v1/consensus/compute` - True phasor coherence
 - [ ] Certificate binding (signed responses or proof field)
 - [ ] `POST /v1/webhooks/register` - Webhook registration
+
+**Phase 4: swarm-it-api (Priority 3)**
+
 - [ ] `WS /v1/stream` - Real-time certificate stream
 - [ ] `GET /v1/certificates` with query filters
 
-### swarm-it-adk
+**Phase 5: swarm-it-adk (Full Thin Client)**
 
-- [ ] Deprecate `local/engine.py` `_classify_local()`
-- [ ] Update `SwarmCertifier` to call `/v1/swarms/{id}/certify`
-- [ ] Update `client.certify_batch()` to call `/v1/certify/batch`
-- [ ] Parse `rsct_mode` from API response
 - [ ] Verify certificate proof when present
+- [ ] Remove all local RSCT computation
+- [ ] ADK becomes pure delegation client
 
 ---
 
