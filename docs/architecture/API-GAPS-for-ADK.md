@@ -461,16 +461,52 @@ Step 3: POST /v1/swarms/{swarm_id}/certify
 - [x] Certificate binding (HMAC-SHA256 proof field) ✓ 2026-03-31
 - [x] `POST /v1/webhooks/register` - Webhook registration ✓ 2026-03-31
 
-**Phase 4: swarm-it-api (Priority 3)**
+**Phase 4: swarm-it-api (zkMEM Privacy)**
+
+- [x] `POST /v1/certify/zk` - Zero-knowledge certification (no R/S/N leak) ✓ 2026-03-31
+- [x] `POST /v1/verify/zk` - ZK proof verification ✓ 2026-03-31
+- [x] `GET /v1/zkmem/status` - zkMEM availability check ✓ 2026-03-31
+- [x] Plonky2 STARK proofs (post-quantum, 261 constraints) ✓ 2026-03-31
+
+**Phase 5: swarm-it-api (Scale)**
 
 - [ ] `WS /v1/stream` - Real-time certificate stream
 - [ ] `GET /v1/certificates` with query filters
 
-**Phase 5: swarm-it-adk (Full Thin Client)**
+**Phase 6: swarm-it-adk (Full Thin Client)**
 
+- [ ] `certify_zk()` method for privacy-preserving certification
 - [ ] Verify certificate proof when present
 - [ ] Remove all local RSCT computation
 - [ ] ADK becomes pure delegation client
+
+---
+
+## zkMEM Privacy Mode
+
+**Purpose:** Prove quality threshold WITHOUT revealing R, S, N values.
+
+**Endpoints:**
+- `POST /v1/certify/zk` - Returns ZK certificate (no R/S/N)
+- `POST /v1/verify/zk` - Verify STARK proof
+
+**Response (no leak):**
+```json
+{
+  "decision": "EXECUTE",
+  "commitment": "sha256:...",
+  "proof": "base64...",
+  "alpha_min": 0.7,
+  "alpha_meets_threshold": true,
+  "proof_system": "plonky2-stark",
+  "post_quantum": true
+}
+```
+
+**Circuit:** Division-free (Theorem 1): R·(1-α_min) ≥ N·α_min
+- 261 constraints (vs 1,011 with division)
+- ~72KB proof size
+- Post-quantum secure (hash-based STARKs)
 
 ---
 
