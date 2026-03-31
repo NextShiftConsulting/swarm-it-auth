@@ -449,11 +449,11 @@ Step 3: POST /v1/swarms/{swarm_id}/certify
 
 **Phase 2: swarm-it-adk (Consume & Deprecate)**
 
-- [ ] Update `client.certify_batch()` to call `/v1/certify/batch`
-- [ ] Parse `rsct_mode` from API response (remove local `_classify_local()`)
-- [ ] Deprecate `local/engine.py` `_classify_local()`
-- [ ] Update `SwarmCertifier` to call `/v1/swarms/{id}/certify`
-- [ ] Mark local certification paths as deprecated
+- [x] Update `client.certify_batch()` to call `/v1/certify/batch` ✓ 2026-03-31
+- [x] Parse `rsct_mode` from API response (remove local `_classify_local()`) ✓ 2026-03-31
+- [x] Deprecate `local/engine.py` `_classify_local()` ✓ 2026-03-31
+- [x] Update `client.certify_swarm()` to call `/v1/swarms/{id}/certify` ✓ 2026-03-31
+- [x] Mark local certification paths as deprecated ✓ 2026-03-31
 
 **Phase 3: swarm-it-api (Priority 2)**
 
