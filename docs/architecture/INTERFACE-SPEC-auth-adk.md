@@ -73,6 +73,32 @@ The boundary principle:
 | `session_token` | 1 hour | Multi-task agent session |
 | `bootstrap_token` | 30 sec | Initial agent registration |
 
+### Field Name Authority
+
+**Canonical external field name for certificate quality gate: `kappa`**
+
+| Context | Field Name | Notes |
+|---------|------------|-------|
+| Token claims | `min_kappa` | Threshold in constraints |
+| Event schema | `kappa` | Certificate metric |
+| API responses | `kappa` | All external interfaces |
+| Internal code | `kappa_gate` | Allowed as internal alias only |
+
+All external interfaces (tokens, events, APIs, dashboards) use `kappa`. Internal code may use `kappa_gate` as an alias but must translate to `kappa` at serialization boundaries.
+
+### Token vs Live Policy Precedence
+
+**The signed mission token is authoritative for mission scope at execution time.**
+
+| Source | Authoritative For |
+|--------|-------------------|
+| Mission token claims | Current mission scope, tools, resources, constraints |
+| Live policy (`GET /v1/policy`) | Refresh decisions, inspection, future missions |
+
+**Rationale:** Runtime must be deterministic and auditable. The token captures what was authorized at mission start. Live policy may change during execution, but the executing agent operates under the authority granted in its signed token. This prevents mid-mission policy changes from causing inconsistent enforcement.
+
+**Exception:** Revocation is immediate. A revoked token fails validation regardless of its claims.
+
 ---
 
 ## 2. Broker API Endpoints (swarm-it-auth)
