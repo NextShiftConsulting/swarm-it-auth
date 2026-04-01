@@ -3,7 +3,8 @@ Adapters - Implementations of ports.
 
 Authentication & Sessions:
 - JWTAuthAdapter: JWT token authentication
-- APIKeyAuthAdapter: API key authentication
+- APIKeyAuthAdapter: API key authentication (used by marketplace)
+- HeaderIdentityAdapter: Trust identity headers from gateway (OAuth2-Proxy, Envoy)
 - RedisSessionAdapter: Redis-backed sessions
 - MemorySessionAdapter: In-memory sessions (testing)
 - DynamoDBSessionAdapter: AWS DynamoDB sessions
@@ -25,13 +26,14 @@ Authorization (PDP):
 
 Credential Brokers (outbound provider access):
 - AWSCredentialBroker: AWS STS temporary credentials
-- GCPCredentialBroker: GCP Workload Identity Federation
 - OpenAICredentialBroker: OpenAI project-scoped keys
+- VaultCredentialBroker: HashiCorp Vault broker for all providers
 """
 
 # Authentication & Sessions
 from swarm_auth.adapters.jwt_auth import JWTAuthAdapter
 from swarm_auth.adapters.api_key_auth import APIKeyAuthAdapter
+from swarm_auth.adapters.header_identity import HeaderIdentityAdapter
 from swarm_auth.adapters.redis_session import RedisSessionAdapter
 from swarm_auth.adapters.memory_session import MemorySessionAdapter
 from swarm_auth.adapters.dynamodb_session import DynamoDBSessionAdapter
@@ -53,13 +55,14 @@ from swarm_auth.adapters.rbac_policy import RBACPolicyAdapter
 
 # Credential Brokers
 from swarm_auth.adapters.aws_credential_broker import AWSCredentialBroker
-from swarm_auth.adapters.gcp_credential_broker import GCPCredentialBroker
 from swarm_auth.adapters.openai_credential_broker import OpenAICredentialBroker
+from swarm_auth.adapters.vault_broker import VaultCredentialBroker
 
 __all__ = [
     # Authentication & Sessions
     "JWTAuthAdapter",
     "APIKeyAuthAdapter",
+    "HeaderIdentityAdapter",
     "RedisSessionAdapter",
     "MemorySessionAdapter",
     "DynamoDBSessionAdapter",
@@ -77,6 +80,6 @@ __all__ = [
     "RBACPolicyAdapter",
     # Credential Brokers
     "AWSCredentialBroker",
-    "GCPCredentialBroker",
     "OpenAICredentialBroker",
+    "VaultCredentialBroker",
 ]
