@@ -7,8 +7,7 @@ Requires swarm-it-api running with ENABLE_AUTH=1.
 
 import pytest
 import httpx
-from swarm_auth import User, UserRole
-from swarm_auth.adapters import JWTAuthAdapter
+from swarm_auth import User, UserRole, create_jwt_auth
 
 
 @pytest.fixture
@@ -21,7 +20,7 @@ def api_url():
 def auth_adapter():
     """Auth adapter with same secret as API."""
     # Must match JWT_SECRET in API environment
-    return JWTAuthAdapter(secret="test-secret-key")
+    return create_jwt_auth(secret="test-secret-key")
 
 
 @pytest.mark.skip(reason="Requires API running with ENABLE_AUTH=1")

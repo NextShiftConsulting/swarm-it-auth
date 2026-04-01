@@ -23,7 +23,7 @@ class JWTAuthAdapter(AuthenticationPort):
         secret: str,
         algorithm: str = "HS256",
         issuer: str = "swarm-it",
-        blacklist_adapter: Optional[BlacklistPort] = None,
+        blacklist_adapter: BlacklistPort = None,
     ):
         """
         Initialize JWT adapter.
@@ -32,18 +32,22 @@ class JWTAuthAdapter(AuthenticationPort):
             secret: JWT signing secret
             algorithm: JWT algorithm (default HS256)
             issuer: Token issuer claim
-            blacklist_adapter: Optional blacklist adapter (defaults to MemoryBlacklistAdapter)
+            blacklist_adapter: Blacklist adapter (required). Use factory.create_jwt_auth()
+                              for convenient defaults.
+
+        Raises:
+            ValueError: If blacklist_adapter is not provided
         """
+        if blacklist_adapter is None:
+            raise ValueError(
+                "blacklist_adapter is required. Use swarm_auth.factory.create_jwt_auth() "
+                "for convenient defaults, or inject a BlacklistPort implementation."
+            )
+
         self._secret = secret
         self._algorithm = algorithm
         self._issuer = issuer
-
-        # Use provided blacklist adapter or default to in-memory
-        if blacklist_adapter is None:
-            from swarm_auth.adapters.memory_blacklist import MemoryBlacklistAdapter
-            self._blacklist = MemoryBlacklistAdapter()
-        else:
-            self._blacklist = blacklist_adapter
+        self._blacklist = blacklist_adapter
 
     def authenticate(self, token: str) -> Optional[User]:
         """

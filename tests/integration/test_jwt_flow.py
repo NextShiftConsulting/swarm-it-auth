@@ -3,8 +3,7 @@ Integration tests for JWT authentication flow.
 """
 
 import pytest
-from swarm_auth import AuthClient, User, UserRole
-from swarm_auth.adapters import JWTAuthAdapter, MemorySessionAdapter
+from swarm_auth import AuthClient, User, UserRole, create_jwt_auth, create_session_store
 
 
 class TestJWTAuthFlow:
@@ -12,8 +11,8 @@ class TestJWTAuthFlow:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.auth = JWTAuthAdapter(secret="test-secret-key")
-        self.sessions = MemorySessionAdapter()
+        self.auth = create_jwt_auth(secret="test-secret-key")
+        self.sessions = create_session_store(backend="memory")
         self.client = AuthClient(auth=self.auth, sessions=self.sessions)
 
     def test_login_and_verify(self):

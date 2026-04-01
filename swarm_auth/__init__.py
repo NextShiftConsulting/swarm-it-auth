@@ -21,18 +21,21 @@ Usage:
     # AWS credentials helper
     aws = get_aws_credentials()
 
-    # Full auth client
-    from swarm_auth import AuthClient
-    from swarm_auth.adapters import JWTAuthAdapter, RedisSessionAdapter
+    # Auth client via factory (recommended)
+    from swarm_auth import create_jwt_auth, create_auth_client
 
-    auth = JWTAuthAdapter(secret=os.environ["JWT_SECRET"])
-    sessions = RedisSessionAdapter(redis_url="redis://localhost")
+    auth = create_jwt_auth(secret="my-secret")  # memory blacklist
+    auth = create_jwt_auth(secret="my-secret", blacklist="redis", redis_url="redis://localhost")
 
-    # Authenticate
-    user = auth.authenticate(token)
+    client = create_auth_client(
+        secret="my-secret",
+        session_backend="redis",
+        redis_url="redis://localhost",
+    )
 
-    # Create session
-    session = sessions.create(user.id)
+    # Or manual assembly with explicit adapters
+    from swarm_auth.adapters import JWTAuthAdapter, MemoryBlacklistAdapter
+    auth = JWTAuthAdapter(secret="my-secret", blacklist_adapter=MemoryBlacklistAdapter())
 """
 
 __version__ = "0.2.0"
@@ -56,6 +59,14 @@ from swarm_auth.domain.user import User, UserRole
 from swarm_auth.domain.session import Session
 from swarm_auth.domain.credential import Credential
 
+# Factory functions (composition root)
+from swarm_auth.factory import (
+    create_blacklist,
+    create_session_store,
+    create_jwt_auth,
+    create_auth_client,
+)
+
 __all__ = [
     # P18 v4.0 AccessScript Credential Triage
     "AccessScript",
@@ -65,6 +76,11 @@ __all__ = [
     "get_credential",
     "has_credential",
     "get_aws_credentials",
+    # Factory functions (recommended)
+    "create_blacklist",
+    "create_session_store",
+    "create_jwt_auth",
+    "create_auth_client",
     # Auth client
     "AuthClient",
     # Domain objects

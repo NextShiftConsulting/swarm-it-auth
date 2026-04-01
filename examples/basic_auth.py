@@ -2,14 +2,13 @@
 Basic Authentication Example - JWT tokens with in-memory sessions.
 """
 
-from swarm_auth import AuthClient, User, UserRole
-from swarm_auth.adapters import JWTAuthAdapter, MemorySessionAdapter
+from swarm_auth import AuthClient, User, UserRole, create_jwt_auth, create_session_store
 
 
 def main():
-    # Initialize auth client
-    auth = JWTAuthAdapter(secret="my-secret-key")
-    sessions = MemorySessionAdapter()
+    # Initialize auth client using factory (recommended)
+    auth = create_jwt_auth(secret="my-secret-key")
+    sessions = create_session_store(backend="memory")
     client = AuthClient(auth=auth, sessions=sessions)
 
     # Create a user

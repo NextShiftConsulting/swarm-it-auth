@@ -11,8 +11,7 @@ Shows the recommended pattern:
 
 import os
 from datetime import datetime
-from swarm_auth import User, UserRole
-from swarm_auth.adapters import JWTAuthAdapter
+from swarm_auth import User, UserRole, create_jwt_auth
 from swarm_auth.adapters.rbac_policy import RBACPolicyAdapter
 from swarm_auth.adapters.aws_credential_broker import AWSCredentialBroker
 from swarm_auth.adapters.openai_credential_broker import OpenAICredentialBroker
@@ -27,7 +26,7 @@ def main():
 
     # 1. INBOUND AUTH: Authenticate the agent
     print("\n1. Authenticating agent...")
-    auth = JWTAuthAdapter(secret="agent-secret")
+    auth = create_jwt_auth(secret="agent-secret")
 
     agent = User(
         user_id="agent_123",
