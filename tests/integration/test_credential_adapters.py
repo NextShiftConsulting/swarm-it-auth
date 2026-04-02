@@ -52,13 +52,13 @@ class TestEnvCredentialAdapter:
         """Test credential rotation."""
         adapter = EnvCredentialAdapter(prefix="TEST_")
 
-        # Store initial value
+        # Store initial value (version starts at 1)
         adapter.store("rotate_key", "old_value")
         assert adapter.retrieve("rotate_key") == "old_value"
 
-        # Rotate to new value
+        # Rotate to new value (version increments to 2)
         cred = adapter.rotate("rotate_key", "new_value")
-        assert cred.version == 1  # Version incremented
+        assert cred.version == 2  # Version incremented from 1 to 2
 
         # Verify new value
         assert adapter.retrieve("rotate_key") == "new_value"

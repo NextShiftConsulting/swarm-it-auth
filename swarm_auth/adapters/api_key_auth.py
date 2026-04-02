@@ -1,5 +1,7 @@
 """
 API Key Authentication Adapter - Simple API key-based auth.
+
+Used by swarm-it-api marketplace for RapidAPI integration.
 """
 
 import secrets

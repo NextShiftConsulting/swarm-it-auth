@@ -1,25 +1,33 @@
 """
-P18 v3.0 - Unified Credential Access Gateway.
+P18 v3.0 - Unified Credential Access Gateway (DEPRECATED).
 
-Single source of truth for all credential access across swarm-it repos.
-Simple os.environ wrapper - no prefix required, standard variable names.
+.. deprecated:: 0.2.0
+    This module is deprecated. Use AccessScript from swarm_auth.access_script instead.
+    Only get_aws_credentials() remains exported for boto3 convenience.
+    Will be removed in v0.3.0.
 
-Usage:
-    from swarm_auth import get_credential, get_aws_credentials, has_credential
+Migration:
+    # Old (deprecated)
+    from swarm_auth.credentials import get_credential, has_credential
 
-    # Get any credential
-    api_key = get_credential('OPENAI_API_KEY')
+    # New (P18 v4.0)
+    from swarm_auth import get_credential, has_credential  # Now from access_script
 
-    # Get AWS credentials dict (boto3-compatible)
+Legacy usage (still works but deprecated):
+    from swarm_auth import get_aws_credentials
     aws = get_aws_credentials()
     client = boto3.client('s3', **aws)
-
-    # Check existence
-    if has_credential('ANTHROPIC_API_KEY'):
-        ...
 """
 import os
+import warnings
 from typing import Optional
+
+warnings.warn(
+    "swarm_auth.credentials is deprecated. Use swarm_auth.access_script instead. "
+    "Only get_aws_credentials() is still exported from the main package.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def get_credential(key: str, default: Optional[str] = None) -> Optional[str]:
