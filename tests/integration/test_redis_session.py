@@ -27,8 +27,10 @@ def redis_adapter():
         for key in r.scan_iter("test:session:*"):
             r.delete(key)
 
-    except (ImportError, redis.exceptions.ConnectionError):
-        pytest.skip("Redis not available")
+    except ImportError:
+        pytest.skip("redis package not installed")
+    except redis.exceptions.ConnectionError:
+        pytest.skip("Redis not running on localhost:6379")
 
 
 class TestRedisSessionAdapter:
