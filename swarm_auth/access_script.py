@@ -40,6 +40,7 @@ class SourceType(Enum):
     """Available credential source types."""
     ENV_VAR = "env_var"
     DOTENV = "dotenv"
+    KEYFILE = "keyfile"
     AWS_SECRETS = "aws_secrets"
     KMS = "kms"
     VAULT = "vault"
@@ -71,6 +72,7 @@ class AccessScriptConfig:
     priority: List[SourceType] = field(default_factory=lambda: [
         SourceType.ENV_VAR,
         SourceType.DOTENV,
+        SourceType.KEYFILE,
         SourceType.K8S_SECRETS,
         SourceType.AWS_SECRETS,
         SourceType.KMS,
@@ -167,6 +169,12 @@ class AccessScript:
                 from swarm_auth.adapters.dotenv_credential import DotEnvAdapter
                 if DotEnvAdapter.is_available():
                     return DotEnvAdapter()
+                return None
+
+            elif source == SourceType.KEYFILE:
+                from swarm_auth.adapters.keyfile_credential import KeyfileAdapter
+                if KeyfileAdapter.is_available():
+                    return KeyfileAdapter()
                 return None
 
             elif source == SourceType.AWS_SECRETS:
