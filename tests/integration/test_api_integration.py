@@ -16,11 +16,14 @@ def api_url():
     return "http://localhost:8080"
 
 
+TEST_SECRET = "test-secret-key-for-unit-tests-only!!"  # noqa: S105
+
+
 @pytest.fixture
 def auth_adapter():
     """Auth adapter with same secret as API."""
     # Must match JWT_SECRET in API environment
-    return create_jwt_auth(secret="test-secret-key")
+    return create_jwt_auth(secret=TEST_SECRET)
 
 
 @pytest.mark.skip(reason="Requires API running with ENABLE_AUTH=1")

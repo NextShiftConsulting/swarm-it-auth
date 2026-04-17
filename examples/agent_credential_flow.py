@@ -19,7 +19,7 @@ from swarm_auth.ports.policy_port import Action, Resource, PolicyContext, Decisi
 from swarm_auth.ports.credential_broker_port import ToolRequest, ProviderType
 
 
-EXAMPLE_SECRET = "agent-secret"  # noqa: S105 — demo only, not a real credential
+EXAMPLE_SECRET = "example-agent-secret-not-for-production!!"  # noqa: S105 — demo only
 
 
 def main():

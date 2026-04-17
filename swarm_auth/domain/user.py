@@ -34,7 +34,7 @@ class User:
     # Optional fields
     email: Optional[str] = None
     org_id: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_login: Optional[datetime] = None
 
     # Metadata

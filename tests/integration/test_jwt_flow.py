@@ -6,12 +6,15 @@ import pytest
 from swarm_auth import AuthClient, User, UserRole, create_jwt_auth, create_session_store
 
 
+TEST_SECRET = "test-secret-key-for-unit-tests-only!!"  # noqa: S105
+
+
 class TestJWTAuthFlow:
     """Test complete JWT authentication workflow."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.auth = create_jwt_auth(secret="test-secret-key")
+        self.auth = create_jwt_auth(secret=TEST_SECRET)
         self.sessions = create_session_store(backend="memory")
         self.client = AuthClient(auth=self.auth, sessions=self.sessions)
 
