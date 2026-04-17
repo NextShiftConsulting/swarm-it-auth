@@ -10,13 +10,16 @@ Shows the recommended pattern:
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from swarm_auth import User, UserRole, create_jwt_auth
 from swarm_auth.adapters.rbac_policy import RBACPolicyAdapter
 from swarm_auth.adapters.aws_credential_broker import AWSCredentialBroker
 from swarm_auth.adapters.openai_credential_broker import OpenAICredentialBroker
 from swarm_auth.ports.policy_port import Action, Resource, PolicyContext, Decision
 from swarm_auth.ports.credential_broker_port import ToolRequest, ProviderType
+
+
+EXAMPLE_SECRET = "agent-secret"  # noqa: S105 — demo only, not a real credential
 
 
 def main():
@@ -26,7 +29,7 @@ def main():
 
     # 1. INBOUND AUTH: Authenticate the agent
     print("\n1. Authenticating agent...")
-    auth = create_jwt_auth(secret="agent-secret")
+    auth = create_jwt_auth(secret=EXAMPLE_SECRET)
 
     agent = User(
         user_id="agent_123",
@@ -62,7 +65,7 @@ def main():
     )
 
     context = PolicyContext(
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
         cost_estimate=0.01,  # $0.01
         request_id="req_abc123",
     )
@@ -129,7 +132,7 @@ def main():
         # 5. AUDIT
         print("\n5. Audit log:")
         audit_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "principal_id": verified_agent.user_id,
             "principal_role": verified_agent.role.value,
             "action": f"{action.provider}.{action.resource_type}.{action.verb}",
@@ -165,7 +168,7 @@ def main():
     )
 
     context_openai = PolicyContext(
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
         token_estimate=1000,
         cost_estimate=0.02,
     )
