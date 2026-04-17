@@ -25,7 +25,7 @@ Usage:
 import os
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
@@ -231,7 +231,7 @@ class AccessScript:
             return False
 
         _, timestamp = self._cache[key]
-        age = (datetime.utcnow() - timestamp).total_seconds()
+        age = (datetime.now(timezone.utc) - timestamp).total_seconds()
         return age < self._config.cache_ttl
 
     def _record_attempt(
@@ -247,7 +247,7 @@ class AccessScript:
             return
 
         attempt = AccessAttempt(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             key=key,
             source=source,
             success=success,
@@ -293,21 +293,21 @@ class AccessScript:
                 continue
 
             # Try to retrieve credential
-            start = datetime.utcnow()
+            start = datetime.now(timezone.utc)
             try:
                 value = adapter.retrieve(key)
-                duration = (datetime.utcnow() - start).total_seconds() * 1000
+                duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
                 if value is not None:
                     # Cache the value
-                    self._cache[key] = (value, datetime.utcnow())
+                    self._cache[key] = (value, datetime.now(timezone.utc))
                     self._record_attempt(key, source, success=True, duration_ms=duration)
                     return value
 
                 self._record_attempt(key, source, success=False, duration_ms=duration)
 
             except Exception as e:
-                duration = (datetime.utcnow() - start).total_seconds() * 1000
+                duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
                 self._record_attempt(key, source, success=False, error=str(e), duration_ms=duration)
                 logger.debug(f"Source {source.value} failed for {key}: {e}")
 

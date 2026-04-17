@@ -6,7 +6,7 @@ Never vends personal API keys.
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from swarm_auth.ports.credential_broker_port import (
     CredentialBrokerPort,
     ProviderCredential,
@@ -68,7 +68,7 @@ class OpenAICredentialBroker(CredentialBrokerPort):
         # For now, return master key with metadata
         # WARNING: This is simplified for demonstration
 
-        expires_at = datetime.utcnow() + timedelta(seconds=tool_request.max_duration)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=tool_request.max_duration)
 
         return ProviderCredential(
             provider=ProviderType.OPENAI,
@@ -81,7 +81,7 @@ class OpenAICredentialBroker(CredentialBrokerPort):
             expires_at=expires_at,
             scope=f"project:{self._project_id}",
             issued_to=principal.user_id,
-            issued_at=datetime.utcnow(),
+            issued_at=datetime.now(timezone.utc),
             request_id=tool_request.request_id,
         )
 

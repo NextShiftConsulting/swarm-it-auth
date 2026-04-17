@@ -6,7 +6,7 @@ Session policies further restrict permissions per request.
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from swarm_auth.ports.credential_broker_port import (
     CredentialBrokerPort,
@@ -108,7 +108,7 @@ class AWSCredentialBroker(CredentialBrokerPort):
             session_name=session_name,
             assumed_role=role_arn,
             issued_to=principal.user_id,
-            issued_at=datetime.utcnow(),
+            issued_at=datetime.now(timezone.utc),
             request_id=tool_request.request_id,
         )
 

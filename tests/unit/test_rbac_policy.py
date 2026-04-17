@@ -3,7 +3,7 @@ Unit tests for RBAC Policy Adapter.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from swarm_auth.domain.user import User, UserRole
 from swarm_auth.adapters.rbac_policy import RBACPolicyAdapter
 from swarm_auth.ports.policy_port import Action, Resource, PolicyContext, Decision
@@ -79,12 +79,12 @@ def test_rbac_budget_limits():
     resource = Resource(provider="openai", resource_type="project", identifier="proj-123", attributes={})
 
     # Within budget
-    context = PolicyContext(timestamp=datetime.utcnow().isoformat(), cost_estimate=50.0)
+    context = PolicyContext(timestamp=datetime.now(timezone.utc).isoformat(), cost_estimate=50.0)
     decision = pdp.evaluate(dev, action, resource, context)
     assert decision.decision == Decision.ALLOW
 
     # Over budget (dev limit is $100/hour)
-    context_over = PolicyContext(timestamp=datetime.utcnow().isoformat(), cost_estimate=150.0)
+    context_over = PolicyContext(timestamp=datetime.now(timezone.utc).isoformat(), cost_estimate=150.0)
     decision = pdp.evaluate(dev, action, resource, context_over)
     assert decision.decision == Decision.DENY
     assert "budget" in decision.reason.lower()
@@ -99,12 +99,12 @@ def test_rbac_token_limits():
     resource = Resource(provider="openai", resource_type="project", identifier="proj-123", attributes={})
 
     # Within limit
-    context = PolicyContext(timestamp=datetime.utcnow().isoformat(), token_estimate=400)
+    context = PolicyContext(timestamp=datetime.now(timezone.utc).isoformat(), token_estimate=400)
     decision = pdp.evaluate(guest, action, resource, context)
     assert decision.decision == Decision.ALLOW
 
     # Over limit (guest limit is 500 tokens)
-    context_over = PolicyContext(timestamp=datetime.utcnow().isoformat(), token_estimate=600)
+    context_over = PolicyContext(timestamp=datetime.now(timezone.utc).isoformat(), token_estimate=600)
     decision = pdp.evaluate(guest, action, resource, context_over)
     assert decision.decision == Decision.DENY
     assert "token" in decision.reason.lower()

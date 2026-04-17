@@ -4,7 +4,7 @@ User Domain Model - Pure business entity.
 
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -88,7 +88,7 @@ class User:
             role=UserRole(data.get("role", "developer")),
             email=data.get("email"),
             org_id=data.get("org_id"),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.utcnow(),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(timezone.utc),
             last_login=datetime.fromisoformat(data["last_login"]) if data.get("last_login") else None,
             is_active=data.get("is_active", True),
             is_service_account=data.get("is_service_account", False),

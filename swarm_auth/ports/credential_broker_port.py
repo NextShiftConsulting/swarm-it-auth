@@ -16,7 +16,7 @@ Providers:
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -57,7 +57,7 @@ class ProviderCredential:
 
     def is_expired(self) -> bool:
         """Check if credential has expired."""
-        return datetime.utcnow() >= self.expires_at
+        return datetime.now(timezone.utc) >= self.expires_at
 
     def to_dict(self) -> Dict[str, Any]:
         """

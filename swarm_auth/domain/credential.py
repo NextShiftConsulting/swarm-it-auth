@@ -4,7 +4,7 @@ Credential Domain Model - Secure credential entity.
 
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -52,7 +52,7 @@ class Credential:
         Returns:
             New credential instance
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return cls(
             key=key,
             created_at=now,
@@ -87,18 +87,18 @@ class Credential:
                 return False
 
         rotation_date = self.last_rotated_at or self.created_at
-        age_days = (datetime.utcnow() - rotation_date).days
+        age_days = (datetime.now(timezone.utc) - rotation_date).days
         return age_days >= policy_days
 
     def rotate(self):
         """Mark credential as rotated (increment version)."""
         self.version += 1
-        self.updated_at = datetime.utcnow()
-        self.last_rotated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
+        self.last_rotated_at = datetime.now(timezone.utc)
 
     def record_access(self):
         """Record that credential was accessed."""
-        self.last_accessed_at = datetime.utcnow()
+        self.last_accessed_at = datetime.now(timezone.utc)
 
     def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
         """

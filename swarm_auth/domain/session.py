@@ -4,7 +4,7 @@ Session Domain Model - Represents a user session.
 
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import secrets
 
@@ -62,7 +62,7 @@ class Session:
         Returns:
             New session instance
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         session_id = secrets.token_urlsafe(32)
 
         return cls(
@@ -81,7 +81,7 @@ class Session:
         """Check if session is valid (active and not expired)."""
         if self.status != SessionStatus.ACTIVE:
             return False
-        return datetime.utcnow() < self.expires_at
+        return datetime.now(timezone.utc) < self.expires_at
 
     def extend(self, seconds: int, max_duration: int = 86400) -> bool:
         """
@@ -112,7 +112,7 @@ class Session:
 
     def update_activity(self):
         """Update last activity timestamp."""
-        self.last_activity = datetime.utcnow()
+        self.last_activity = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict."""

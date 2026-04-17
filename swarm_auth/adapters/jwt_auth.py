@@ -3,7 +3,7 @@ JWT Authentication Adapter - Implements AuthenticationPort with JWT tokens.
 """
 
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from swarm_auth.ports.auth_port import AuthenticationPort
 from swarm_auth.ports.blacklist_port import BlacklistPort
@@ -100,7 +100,7 @@ class JWTAuthAdapter(AuthenticationPort):
         Returns:
             JWT token string
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         payload = {
             "sub": user.user_id,
             "username": user.username,
@@ -161,8 +161,8 @@ class JWTAuthAdapter(AuthenticationPort):
             exp = payload.get("exp")
             if exp:
                 # Calculate remaining TTL
-                exp_time = datetime.fromtimestamp(exp)
-                ttl = int((exp_time - datetime.utcnow()).total_seconds())
+                exp_time = datetime.fromtimestamp(exp, tz=timezone.utc)
+                ttl = int((exp_time - datetime.now(timezone.utc)).total_seconds())
                 if ttl > 0:
                     return self._blacklist.add(token, ttl)
         except jwt.InvalidTokenError:

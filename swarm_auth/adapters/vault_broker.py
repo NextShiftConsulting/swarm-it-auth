@@ -10,7 +10,7 @@ One broker to rule them all.
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from swarm_auth.ports.credential_broker_port import (
     CredentialBrokerPort,
     ProviderCredential,
@@ -123,10 +123,10 @@ class VaultCredentialBroker(CredentialBrokerPort):
                 "secret_access_key": creds["secret_key"],
                 "session_token": creds["security_token"],
             },
-            expires_at=datetime.utcnow() + timedelta(seconds=tool_request.max_duration),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=tool_request.max_duration),
             scope=tool_request.action,
             issued_to=principal.user_id,
-            issued_at=datetime.utcnow(),
+            issued_at=datetime.now(timezone.utc),
             request_id=tool_request.request_id,
         )
 
@@ -162,7 +162,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
             expires_at=datetime.fromisoformat(token_data["token_ttl"]),
             scope=token_data.get("token_scopes", ""),
             issued_to=principal.user_id,
-            issued_at=datetime.utcnow(),
+            issued_at=datetime.now(timezone.utc),
             request_id=tool_request.request_id,
         )
 
@@ -193,10 +193,10 @@ class VaultCredentialBroker(CredentialBrokerPort):
                 "api_key": secret_data["api_key"],
                 "project_id": secret_data.get("project_id"),
             },
-            expires_at=datetime.utcnow() + timedelta(seconds=tool_request.max_duration),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=tool_request.max_duration),
             scope=f"project:{secret_data.get('project_id')}",
             issued_to=principal.user_id,
-            issued_at=datetime.utcnow(),
+            issued_at=datetime.now(timezone.utc),
             request_id=tool_request.request_id,
         )
 
@@ -226,10 +226,10 @@ class VaultCredentialBroker(CredentialBrokerPort):
             credentials={
                 "token": secret_data["token"],
             },
-            expires_at=datetime.utcnow() + timedelta(seconds=tool_request.max_duration),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=tool_request.max_duration),
             scope=tool_request.action,
             issued_to=principal.user_id,
-            issued_at=datetime.utcnow(),
+            issued_at=datetime.now(timezone.utc),
             request_id=tool_request.request_id,
         )
 

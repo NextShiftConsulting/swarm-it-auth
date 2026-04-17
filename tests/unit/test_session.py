@@ -3,7 +3,7 @@ Unit tests for Session domain model.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from swarm_auth.domain.session import Session, SessionStatus
 
 
@@ -24,7 +24,7 @@ def test_session_expiration():
     assert session.is_valid()
 
     # Manually set expiration to past
-    session.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    session.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     assert not session.is_valid()
 
 

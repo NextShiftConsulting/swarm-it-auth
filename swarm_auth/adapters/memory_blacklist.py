@@ -3,7 +3,7 @@ Memory Blacklist Adapter - In-memory token blacklist.
 """
 
 from typing import Optional, Set, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from swarm_auth.ports.blacklist_port import BlacklistPort
 
 
@@ -43,7 +43,7 @@ class MemoryBlacklistAdapter(BlacklistPort):
 
         # Check expiration
         if token in self._expiration:
-            if datetime.utcnow() > self._expiration[token]:
+            if datetime.now(timezone.utc) > self._expiration[token]:
                 # Expired - remove and return False
                 self._blacklist.discard(token)
                 del self._expiration[token]
@@ -69,7 +69,7 @@ class MemoryBlacklistAdapter(BlacklistPort):
 
         # Set expiration
         ttl = ttl or self._default_ttl
-        self._expiration[token] = datetime.utcnow() + timedelta(seconds=ttl)
+        self._expiration[token] = datetime.now(timezone.utc) + timedelta(seconds=ttl)
 
         return True
 
@@ -97,7 +97,7 @@ class MemoryBlacklistAdapter(BlacklistPort):
         Returns:
             Number of entries cleaned up
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired = [
             token
             for token, exp_time in self._expiration.items()
