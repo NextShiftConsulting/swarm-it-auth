@@ -17,7 +17,7 @@ from swarm_auth.ports.credential_broker_port import (
     ToolRequest,
     ProviderType,
 )
-from swarm_auth.domain.user import User
+from swarm_auth.domain.principal import Principal
 
 
 class VaultCredentialBroker(CredentialBrokerPort):
@@ -71,7 +71,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
 
     def vend_credential(
         self,
-        principal: User,
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -95,7 +95,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
 
     def _vend_aws(
         self,
-        principal: User,
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -132,7 +132,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
 
     def _vend_gcp(
         self,
-        principal: User,
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -168,7 +168,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
 
     def _vend_openai(
         self,
-        principal: User,
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -202,7 +202,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
 
     def _vend_huggingface(
         self,
-        principal: User,
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -261,7 +261,7 @@ class VaultCredentialBroker(CredentialBrokerPort):
 
     def list_active_credentials(
         self,
-        principal: User,
+        principal: Principal,
         provider: Optional[ProviderType] = None,
     ) -> list[ProviderCredential]:
         """List active credentials (requires separate tracking)."""

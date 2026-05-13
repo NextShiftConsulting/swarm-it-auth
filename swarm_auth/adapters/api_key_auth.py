@@ -8,7 +8,8 @@ import secrets
 import hashlib
 from typing import Optional, Dict
 from swarm_auth.ports.auth_port import AuthenticationPort
-from swarm_auth.domain.user import User, UserRole
+from swarm_auth.domain.principal import Principal
+from swarm_auth.domain.user import User  # noqa: F401 — kept for register_user() compat
 
 
 class APIKeyAuthAdapter(AuthenticationPort):
@@ -24,10 +25,10 @@ class APIKeyAuthAdapter(AuthenticationPort):
         # In production: use database or key-value store
         # Format: {hashed_key: user_id}
         self._keys: Dict[str, str] = {}
-        # Format: {user_id: User}
-        self._users: Dict[str, User] = {}
+        # Format: {user_id: Principal}
+        self._users: Dict[str, Principal] = {}
 
-    def authenticate(self, token: str) -> Optional[User]:
+    def authenticate(self, token: str) -> Optional[Principal]:
         """
         Authenticate an API key.
 
@@ -45,7 +46,7 @@ class APIKeyAuthAdapter(AuthenticationPort):
 
         return self._users.get(user_id)
 
-    def create_token(self, user: User, expires_in: int = 3600) -> str:
+    def create_token(self, principal: Principal, expires_in: int = 3600) -> str:
         """
         Create an API key for a user.
 
@@ -61,8 +62,8 @@ class APIKeyAuthAdapter(AuthenticationPort):
 
         # Hash and store
         hashed = self._hash_key(api_key)
-        self._keys[hashed] = user.user_id
-        self._users[user.user_id] = user
+        self._keys[hashed] = principal.user_id
+        self._users[principal.user_id] = principal
 
         return api_key
 
@@ -102,12 +103,13 @@ class APIKeyAuthAdapter(AuthenticationPort):
         """Hash an API key with SHA-256."""
         return hashlib.sha256(key.encode()).hexdigest()
 
-    def register_user(self, user: User) -> str:
+    def register_user(self, user: Principal) -> str:
         """
-        Register a user and generate an API key.
+        Register a principal and generate an API key.
 
         Args:
-            user: User to register
+            user: Principal (HumanUser or AgentIdentity) to register.
+                  Parameter named 'user' for backward compatibility.
 
         Returns:
             Generated API key

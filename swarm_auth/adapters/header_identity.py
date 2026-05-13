@@ -7,7 +7,9 @@ Your service trusts the gateway to validate identity.
 
 from typing import Optional
 from swarm_auth.ports.auth_port import AuthenticationPort
-from swarm_auth.domain.user import User, UserRole
+from swarm_auth.domain.principal import Principal
+from swarm_auth.domain.human_user import HumanUser
+from swarm_auth.domain.roles import UserRole
 
 
 class HeaderIdentityAdapter(AuthenticationPort):
@@ -56,14 +58,14 @@ class HeaderIdentityAdapter(AuthenticationPort):
             "guest": UserRole.GUEST,
         }
 
-    def authenticate(self, token: str) -> Optional[User]:
+    def authenticate(self, token: str) -> Optional[Principal]:
         """
         This method is not used for header-based auth.
         Use verify_request() instead.
         """
         return None
 
-    def verify_request(self, headers: dict) -> Optional[User]:
+    def verify_request(self, headers: dict) -> Optional[HumanUser]:
         """
         Verify request and extract user from headers.
 
@@ -90,7 +92,7 @@ class HeaderIdentityAdapter(AuthenticationPort):
                 role = self._group_to_role[group.lower()]
                 break
 
-        return User(
+        return HumanUser(
             user_id=user_id,
             username=user_id,
             email=email,
@@ -98,7 +100,7 @@ class HeaderIdentityAdapter(AuthenticationPort):
             is_active=True,
         )
 
-    def create_token(self, user: User, expires_in: int = 3600) -> str:
+    def create_token(self, principal: Principal, expires_in: int = 3600) -> str:
         """Not supported for header-based auth."""
         raise NotImplementedError(
             "Header adapter doesn't create tokens. Use gateway (OAuth2-Proxy)."

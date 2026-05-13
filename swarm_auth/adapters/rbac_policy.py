@@ -3,6 +3,15 @@ RBAC Policy Adapter - Role-based policy decisions.
 
 Maps user roles to allowed actions on resources.
 Good starting point before graduating to ABAC or OPA.
+
+ADR-028 Stage 3: User -> Principal in type signatures.
+- evaluate/batch_evaluate/get_allowed_actions accept Principal now.
+- ORCHESTRATOR_ONLY_CAPABILITIES gate added: actions in this set require
+  isinstance(principal, AgentIdentity) and agent_type == AgentType.ORCHESTRATOR.
+
+Stage 4 TODO:
+- Populate ORCHESTRATOR_ONLY_CAPABILITIES with swarm.orchestrate.* etc.
+  as orchestrator-specific actions are identified.
 """
 
 from typing import Dict, Any, List, Optional, Set
@@ -14,7 +23,17 @@ from swarm_auth.ports.policy_port import (
     PolicyDecision,
     Decision,
 )
-from swarm_auth.domain.user import User, UserRole
+from swarm_auth.domain.principal import Principal
+from swarm_auth.domain.agent_identity import AgentIdentity, AgentType
+from swarm_auth.domain.roles import UserRole
+
+# Actions that require AgentIdentity with agent_type == ORCHESTRATOR.
+# A non-orchestrator principal (HumanUser, tool agent, etc.) will receive DENY.
+# Populate as orchestrator-specific capabilities are identified.
+ORCHESTRATOR_ONLY_CAPABILITIES: frozenset = frozenset({
+    # e.g. "swarm.orchestrate.delegate", "swarm.orchestrate.spawn"
+    # Currently empty — gate is wired and enforced; capabilities added as needed.
+})
 
 
 class RBACPolicyAdapter(PolicyDecisionPoint):
@@ -110,7 +129,7 @@ class RBACPolicyAdapter(PolicyDecisionPoint):
 
     def evaluate(
         self,
-        principal: User,
+        principal: Principal,
         action: Action,
         resource: Resource,
         context: Optional[PolicyContext] = None,
@@ -119,6 +138,18 @@ class RBACPolicyAdapter(PolicyDecisionPoint):
 
         # Build action string
         action_str = f"{action.provider}.{action.resource_type}.{action.verb}"
+
+        # Gate orchestrator-only capabilities (ADR-028 Stage 3)
+        if action_str in ORCHESTRATOR_ONLY_CAPABILITIES:
+            if not (isinstance(principal, AgentIdentity)
+                    and principal.agent_type == AgentType.ORCHESTRATOR):
+                return PolicyDecision(
+                    decision=Decision.DENY,
+                    reason=(
+                        f"{action_str} requires AgentIdentity with "
+                        f"agent_type=ORCHESTRATOR. Got: {type(principal).__name__}"
+                    ),
+                )
 
         # Check if role has capability
         capabilities = self._role_capabilities.get(principal.role, set())
@@ -144,7 +175,7 @@ class RBACPolicyAdapter(PolicyDecisionPoint):
 
     def _allow_decision(
         self,
-        principal: User,
+        principal: Principal,
         action_str: str,
         context: Optional[PolicyContext],
     ) -> PolicyDecision:
@@ -180,7 +211,7 @@ class RBACPolicyAdapter(PolicyDecisionPoint):
 
     def batch_evaluate(
         self,
-        principal: User,
+        principal: Principal,
         requests: List[tuple[Action, Resource]],
         context: Optional[PolicyContext] = None,
     ) -> List[PolicyDecision]:
@@ -192,7 +223,7 @@ class RBACPolicyAdapter(PolicyDecisionPoint):
 
     def get_allowed_actions(
         self,
-        principal: User,
+        principal: Principal,
         resource: Resource,
     ) -> List[Action]:
         """Get allowed actions for principal on resource."""

@@ -14,7 +14,7 @@ from swarm_auth.ports.credential_broker_port import (
     ToolRequest,
     ProviderType,
 )
-from swarm_auth.domain.user import User
+from swarm_auth.domain.principal import Principal
 
 
 class AWSCredentialBroker(CredentialBrokerPort):
@@ -58,7 +58,7 @@ class AWSCredentialBroker(CredentialBrokerPort):
 
     def vend_credential(
         self,
-        principal: User,
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -165,7 +165,7 @@ class AWSCredentialBroker(CredentialBrokerPort):
 
     def list_active_credentials(
         self,
-        principal: User,
+        principal: Principal,
         provider: Optional[ProviderType] = None,
     ) -> list[ProviderCredential]:
         """List active credentials (not implemented for STS)."""
