@@ -1,12 +1,25 @@
-# ACP (Agentic Credential Protocol) module — Stage 1
+# ACP (Agentic Credential Protocol) module — Stage 4
 # Status: EXPERIMENTAL — no production code depends on this module.
 # See swarm_auth/acp/README.md for architecture and invariants.
 #
-# Stage 1: re-export ActorChain from domain (domain is authoritative).
-# ADR-028 mentions `from swarm_auth.acp import ActorChain` as a valid
-# public path. This satisfies that contract without creating a separate
-# acp/actor_chain.py module.
+# Stage 1: ActorChain re-exported from domain (domain is authoritative).
+# Stage 4: ScopePolicyAdapter + ScopeEnforcingBrokerAdapter added.
 
 from swarm_auth.domain.agent_identity import ActorChain  # noqa: F401
 
-__all__ = ["ActorChain"]
+from swarm_auth.acp.adapters.scope_policy_adapter import (  # noqa: F401
+    ScopePolicyAdapter,
+    ScopeEnforcingBrokerAdapter,
+    ScopePolicyDecision,
+    ScopeConstraint,
+)
+
+__all__ = [
+    # Domain re-exports (domain is authoritative)
+    "ActorChain",
+    # Stage 4: scope policy
+    "ScopePolicyAdapter",
+    "ScopeEnforcingBrokerAdapter",
+    "ScopePolicyDecision",
+    "ScopeConstraint",
+]

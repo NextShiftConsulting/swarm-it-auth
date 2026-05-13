@@ -1,0 +1,106 @@
+# scope_constraints.yaml — default resource allow-list for ACP scope validation
+# ADR-028 Stage 4 / ADR-027 Gap 2 (unvalidated ToolRequest.resource)
+#
+# Schema version: "1.0"
+# Loaded by ScopePolicyAdapter. Override by passing constraints_path to the constructor.
+#
+# Each constraint entry defines which resources are reachable for a given
+# provider + action combination. Resources use fnmatch-style wildcards (* = any segment).
+#
+# Fields:
+#   id:                 Human-readable identifier (must be unique)
+#   provider:           Matches ToolRequest.provider.value (e.g. "aws", "openai")
+#   action_pattern:     fnmatch against ToolRequest.action (e.g. "s3:*", "chat.*")
+#   allowed_resources:  List of allowed resource patterns (fnmatch)
+#   agent_types:        If set, only AgentIdentity with these agent_type values allowed.
+#                       null means any principal type is allowed.
+#   expires_at:         ISO-8601 UTC. null means no expiry.
+#   read_only:          If true, write actions (Put, Create, Upload) are denied.
+#
+# RBAC intersection: ScopePolicyAdapter is AND-gated with RBACPolicyAdapter.
+# A request must pass BOTH to reach the provider. ScopePolicyAdapter runs first
+# (deny before STS/OpenAI/Vault call).
+
+version: "1.0"
+constraints:
+
+  # --- AWS S3 ---
+  - id: "aws-s3-swarm-buckets"
+    provider: "aws"
+    action_pattern: "s3:*"
+    allowed_resources:
+      - "arn:aws:s3:::swarm-*"
+      - "arn:aws:s3:::swarm-*/*"
+    agent_types: null
+    expires_at: null
+    read_only: false
+
+  - id: "aws-s3-read-any-swarm"
+    provider: "aws"
+    action_pattern: "s3:GetObject"
+    allowed_resources:
+      - "arn:aws:s3:::swarm-*/*"
+    agent_types: null
+    expires_at: null
+    read_only: true
+
+  # --- AWS DynamoDB ---
+  - id: "aws-dynamodb-swarm-tables"
+    provider: "aws"
+    action_pattern: "dynamodb:*"
+    allowed_resources:
+      - "arn:aws:dynamodb:*:*:table/swarm-*"
+    agent_types: null
+    expires_at: null
+    read_only: false
+
+  # --- OpenAI ---
+  - id: "openai-chat-any-project"
+    provider: "openai"
+    action_pattern: "chat.*"
+    allowed_resources:
+      - "project-*"
+      - "*"
+    agent_types: null
+    expires_at: null
+    read_only: false
+
+  - id: "openai-embed-any-project"
+    provider: "openai"
+    action_pattern: "embeddings.*"
+    allowed_resources:
+      - "project-*"
+      - "*"
+    agent_types: null
+    expires_at: null
+    read_only: false
+
+  # --- Anthropic / Bedrock ---
+  - id: "anthropic-messages-any"
+    provider: "anthropic"
+    action_pattern: "messages.*"
+    allowed_resources:
+      - "*"
+    agent_types: null
+    expires_at: null
+    read_only: false
+
+  - id: "bedrock-invoke-allowed-models"
+    provider: "bedrock"
+    action_pattern: "InvokeModel"
+    allowed_resources:
+      - "arn:aws:bedrock:*::foundation-model/anthropic.*"
+      - "arn:aws:bedrock:*::foundation-model/amazon.*"
+    agent_types: null
+    expires_at: null
+    read_only: false
+
+  # --- HuggingFace ---
+  - id: "huggingface-inference-any"
+    provider: "huggingface"
+    action_pattern: "inference"
+    allowed_resources:
+      - "*"
+    agent_types: null
+    expires_at: null
+    read_only: false
