@@ -46,8 +46,9 @@ def test_three_hop_act_chain_recorded_in_audit_log() -> None:
     Contract reference: ADR-027 Gap 4, ADR-028 SD-1 (principal_kind discriminator)
     """
     from swarm_auth.acp.adapters.memory_audit_adapter import MemoryAuditAdapter  # noqa: F401
-    from swarm_auth.acp.domain.actor_chain import ActorChain  # noqa: F401
-    from swarm_auth.acp.domain.principal import AgentIdentity, HumanUser  # noqa: F401
+    # domain is authoritative — ActorChain/AgentIdentity/HumanUser live in swarm_auth.domain
+    from swarm_auth.domain.agent_identity import ActorChain, AgentIdentity  # noqa: F401
+    from swarm_auth.domain.human_user import HumanUser  # noqa: F401
 
     raise NotImplementedError("MemoryAuditAdapter not implemented (Stage 2)")
 

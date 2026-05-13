@@ -61,6 +61,7 @@ def test_rfc8693_act_chain_preserved_across_exchange() -> None:
 
     Contract reference: ADR-028 SD-2, ADR-027 SD-4 (flat delegation fix)
     """
-    from swarm_auth.acp.domain.actor_chain import ActorChain  # noqa: F401
+    # domain is authoritative — ActorChain lives in swarm_auth.domain, re-exported via acp
+    from swarm_auth.domain.agent_identity import ActorChain  # noqa: F401
 
-    raise NotImplementedError("ActorChain not implemented (Stage 1)")
+    raise NotImplementedError("RFC8693 act chain preservation not implemented (Stage 5)")

@@ -27,12 +27,8 @@ This module follows the ADR-001 hexagonal pattern established in `swarm_auth`:
 
 ```
 swarm_auth/acp/
-├── __init__.py                  # Module marker (no exports until Stage 1)
+├── __init__.py                  # Re-exports ACP public surface (ActorChain, etc.)
 ├── README.md                    # This file
-├── domain/                      # Pure entities (no I/O, no swarm_auth imports)
-│   ├── principal.py             # Principal ABC, HumanUser, AgentIdentity
-│   ├── actor_chain.py           # ActorChain / act_claim list
-│   └── scope_constraints.py    # ScopeConstraints (scope_constraints.yaml schema)
 ├── ports/                       # ABCs only — no concrete implementations
 │   ├── audit_port.py            # AuditPort ABC (required constructor arg in all adapters)
 │   └── token_exchange_port.py  # TokenExchangePort ABC (RFC 8693)
@@ -44,11 +40,32 @@ swarm_auth/acp/
     └── rfc8693_token_exchange.py # authlib-backed RFC 8693 exchange
 ```
 
+**Domain entities live in `swarm_auth/domain/`, not in `acp/domain/`.**
+
+`Principal`, `HumanUser`, `AgentIdentity`, `AgentType`, and `ActorChain` are defined in
+`swarm_auth/domain/` (established in Stage 1). ACP re-exports what callers need via
+`acp/__init__.py`. There is no `acp/domain/` subdirectory — creating one would undo
+the domain-authoritative decision made in Stage 1.
+
+```python
+# Correct import paths
+from swarm_auth.domain.agent_identity import ActorChain, AgentIdentity, AgentType
+from swarm_auth.domain.human_user import HumanUser
+from swarm_auth.domain.principal import Principal
+
+# Also valid — re-exported from acp surface
+from swarm_auth.acp import ActorChain
+
+# WRONG — acp/domain/ does not exist
+# from swarm_auth.acp.domain.actor_chain import ActorChain  # NO
+# from swarm_auth.acp.domain.principal import HumanUser     # NO
+```
+
 **Rules (enforced by review, not yet by lint):**
 
-1. `domain/` imports nothing from `swarm_auth.*` and nothing from `acp.ports` or `acp.adapters`.
-2. `ports/` imports only from `acp.domain.*` and Python stdlib.
-3. `adapters/` may import third-party libs (authlib, jose, pydantic) but never from `acp.domain` via circular paths.
+1. `acp/` never defines domain entities — it imports them from `swarm_auth.domain.*`.
+2. `ports/` imports only from `swarm_auth.domain.*` and Python stdlib.
+3. `adapters/` may import third-party libs (authlib, jose, pydantic) but never redefine domain types.
 4. All adapter constructors take `audit_port: AuditPort` as a required argument.
 5. No adapter holds credential material. Secrets pass through to `CredentialBrokerPort` immediately.
 
