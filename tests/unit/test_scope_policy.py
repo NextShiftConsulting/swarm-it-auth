@@ -26,6 +26,7 @@ from swarm_auth.acp.adapters.scope_policy_adapter import (
     ScopeConstraint,
     ScopePolicyDecision,
 )
+from swarm_auth.ports.policy_port import Action, Resource, Decision
 from swarm_auth.domain.human_user import HumanUser
 from swarm_auth.domain.agent_identity import AgentIdentity, AgentType
 from swarm_auth.domain.roles import UserRole
@@ -407,6 +408,114 @@ def test_scope_deny_prevents_provider_call_even_when_rbac_allows(human_principal
         broker.vend_credential(human_principal, forbidden_request)
 
     inner.vend_credential.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# PolicyDecisionPoint interface
+# ---------------------------------------------------------------------------
+
+def test_evaluate_pdp_interface_allows(human_principal):
+    """ScopePolicyAdapter.evaluate() returns Decision.ALLOW via PDP interface."""
+    constraint = ScopeConstraint(
+        id="pdp-allow",
+        provider="aws",
+        action_pattern="s3:*",
+        allowed_resources=["arn:aws:s3:::swarm-*/*"],
+    )
+    policy = _make_policy(constraint)
+    decision = policy.evaluate(
+        human_principal,
+        Action(verb="PutObject", provider="aws", resource_type="s3"),
+        Resource(provider="aws", resource_type="s3",
+                 identifier="arn:aws:s3:::swarm-data/file.csv", attributes={}),
+    )
+    assert decision.decision == Decision.ALLOW
+    assert decision.policy_id == "pdp-allow"
+
+
+def test_evaluate_pdp_interface_denies(human_principal):
+    """ScopePolicyAdapter.evaluate() returns Decision.DENY for out-of-scope resource."""
+    constraint = ScopeConstraint(
+        id="pdp-deny",
+        provider="aws",
+        action_pattern="s3:*",
+        allowed_resources=["arn:aws:s3:::swarm-*/*"],
+    )
+    policy = _make_policy(constraint)
+    decision = policy.evaluate(
+        human_principal,
+        Action(verb="PutObject", provider="aws", resource_type="s3"),
+        Resource(provider="aws", resource_type="s3",
+                 identifier="arn:aws:s3:::prod-secrets/key.pem", attributes={}),
+    )
+    assert decision.decision == Decision.DENY
+
+
+def test_evaluate_pdp_unknown_provider(human_principal):
+    """ScopePolicyAdapter.evaluate() returns DENY for an unknown provider."""
+    policy = _make_policy()  # no constraints
+    decision = policy.evaluate(
+        human_principal,
+        Action(verb="query", provider="unknown_db", resource_type="table"),
+        Resource(provider="unknown_db", resource_type="table",
+                 identifier="some-table", attributes={}),
+    )
+    assert decision.decision == Decision.DENY
+
+
+def test_batch_evaluate_mixed(human_principal):
+    """batch_evaluate returns per-request decisions."""
+    constraint = ScopeConstraint(
+        id="batch-test",
+        provider="openai",
+        action_pattern="chat.*",
+        allowed_resources=["project-*"],
+    )
+    policy = _make_policy(constraint)
+    decisions = policy.batch_evaluate(
+        human_principal,
+        [
+            (
+                Action(verb="generate", provider="openai", resource_type="chat"),
+                Resource(provider="openai", resource_type="project",
+                         identifier="project-abc123", attributes={}),
+            ),
+            (
+                Action(verb="generate", provider="openai", resource_type="chat"),
+                Resource(provider="openai", resource_type="project",
+                         identifier="evil-project", attributes={}),
+            ),
+        ],
+    )
+    assert decisions[0].decision == Decision.ALLOW
+    assert decisions[1].decision == Decision.DENY
+
+
+def test_get_allowed_actions_returns_matching(human_principal):
+    """get_allowed_actions returns Action objects for matching constraints."""
+    constraint = ScopeConstraint(
+        id="ga-test",
+        provider="aws",
+        action_pattern="s3:*",
+        allowed_resources=["arn:aws:s3:::swarm-*/*"],
+    )
+    policy = _make_policy(constraint)
+    actions = policy.get_allowed_actions(
+        human_principal,
+        Resource(provider="aws", resource_type="s3",
+                 identifier="arn:aws:s3:::swarm-data/file.csv", attributes={}),
+    )
+    assert len(actions) == 1
+    assert actions[0].provider == "aws"
+    assert actions[0].resource_type == "s3"
+
+
+def test_scope_policy_adapter_is_policy_decision_point():
+    """ScopePolicyAdapter is a PolicyDecisionPoint (isinstance check)."""
+    from swarm_auth.ports.policy_port import PolicyDecisionPoint
+    policy = ScopePolicyAdapter.__new__(ScopePolicyAdapter)
+    policy._constraints = []
+    assert isinstance(policy, PolicyDecisionPoint)
 
 
 # ---------------------------------------------------------------------------

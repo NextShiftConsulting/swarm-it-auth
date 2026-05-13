@@ -61,6 +61,14 @@ from swarm_auth.ports.credential_broker_port import (
     ProviderType,
     ToolRequest,
 )
+from swarm_auth.ports.policy_port import (
+    PolicyDecisionPoint,
+    Action,
+    Resource,
+    PolicyContext,
+    PolicyDecision,
+    Decision,
+)
 
 _DEFAULT_CONSTRAINTS_PATH = Path(__file__).parent.parent / "scope_constraints.yaml"
 
@@ -86,9 +94,19 @@ class ScopePolicyDecision:
     matched_resource_pattern: Optional[str] = None
 
 
-class ScopePolicyAdapter:
+class ScopePolicyAdapter(PolicyDecisionPoint):
     """
     Validates ToolRequest.resource against scope_constraints.yaml before vending.
+
+    Implements PolicyDecisionPoint so it can be composed with RBACPolicyAdapter
+    in a standard PDP pipeline (RBAC ∩ ScopePolicy — both must ALLOW).
+
+    The primary entry point is validate(principal, tool_request) which accepts a
+    ToolRequest directly. The PDP interface evaluate(principal, action, resource)
+    bridges from the abstract Action/Resource types to ToolRequest using the
+    provider-native action-string convention:
+      - AWS:  "{resource_type}:{verb}"  e.g. "s3:PutObject"
+      - Others: "{resource_type}.{verb}" e.g. "chat.generate"
 
     Addresses ADR-027 Gap 2: ToolRequest.resource was previously unvalidated —
     any string could be passed as a resource identifier, bypassing the intended
@@ -244,6 +262,129 @@ class ScopePolicyAdapter:
     def loaded_constraint_count(self) -> int:
         """Return number of loaded constraints. Useful for health checks."""
         return len(self._constraints)
+
+    # ------------------------------------------------------------------
+    # PolicyDecisionPoint interface (PDP composition with RBACPolicyAdapter)
+    # ------------------------------------------------------------------
+
+    def evaluate(
+        self,
+        principal: Principal,
+        action: Action,
+        resource: Resource,
+        context: Optional[PolicyContext] = None,
+    ) -> PolicyDecision:
+        """
+        Evaluate scope policy via the PolicyDecisionPoint interface.
+
+        Bridges Action/Resource to ToolRequest using provider-native notation:
+          - AWS:    "{resource_type}:{verb}"  matches yaml patterns like "s3:*"
+          - Others: "{resource_type}.{verb}"  matches yaml patterns like "chat.*"
+
+        Called by a PDP pipeline after RBAC evaluate(); both must return ALLOW.
+        """
+        try:
+            provider_type = ProviderType(action.provider)
+        except ValueError:
+            return PolicyDecision(
+                decision=Decision.DENY,
+                reason=f"Unknown provider: {action.provider!r}. Add to ProviderType enum.",
+                policy_id="scope-unknown-provider",
+                evaluated_rules=[],
+            )
+
+        if action.provider == "aws":
+            action_str = f"{action.resource_type}:{action.verb}"
+        else:
+            action_str = f"{action.resource_type}.{action.verb}"
+
+        tool_request = ToolRequest(
+            tool_name=f"{action.provider}_{action.resource_type}_{action.verb}",
+            provider=provider_type,
+            action=action_str,
+            resource=resource.identifier,
+        )
+
+        scope_decision = self.validate(principal, tool_request)
+
+        return PolicyDecision(
+            decision=Decision.ALLOW if scope_decision.allowed else Decision.DENY,
+            reason=scope_decision.reason,
+            policy_id=scope_decision.matched_constraint_id,
+            evaluated_rules=(
+                [scope_decision.matched_constraint_id]
+                if scope_decision.matched_constraint_id else []
+            ),
+        )
+
+    def batch_evaluate(
+        self,
+        principal: Principal,
+        requests: List[tuple],  # List[tuple[Action, Resource]]
+        context: Optional[PolicyContext] = None,
+    ) -> List[PolicyDecision]:
+        """Evaluate multiple scope checks in order."""
+        return [
+            self.evaluate(principal, action, resource, context)
+            for action, resource in requests
+        ]
+
+    def get_allowed_actions(
+        self,
+        principal: Principal,
+        resource: Resource,
+    ) -> List[Action]:
+        """
+        Return Action objects the principal may perform on the resource.
+
+        Iterates non-expired, principal-applicable constraints for the given
+        provider. Returns one Action per matching constraint, with the
+        action_pattern decomposed into (resource_type, verb).
+        """
+        now = datetime.now(timezone.utc)
+        allowed: List[Action] = []
+        seen: set = set()
+
+        for constraint in self._constraints:
+            if constraint.provider != resource.provider:
+                continue
+            if constraint.expires_at and now >= constraint.expires_at:
+                continue
+            if constraint.agent_types is not None:
+                if not isinstance(principal, AgentIdentity):
+                    continue
+                if principal.agent_type.value not in constraint.agent_types:
+                    continue
+
+            # Only yield if resource identifier matches at least one pattern
+            resource_match = any(
+                fnmatch.fnmatch(resource.identifier, pat)
+                for pat in constraint.allowed_resources
+            )
+            if not resource_match:
+                continue
+
+            key = (constraint.provider, constraint.action_pattern)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Decompose action_pattern into (resource_type, verb)
+            pat = constraint.action_pattern
+            if ":" in pat:
+                resource_type, verb = pat.split(":", 1)
+            elif "." in pat:
+                resource_type, verb = pat.split(".", 1)
+            else:
+                resource_type, verb = "*", pat
+
+            allowed.append(Action(
+                verb=verb,
+                provider=constraint.provider,
+                resource_type=resource_type,
+            ))
+
+        return allowed
 
     @staticmethod
     def _is_write_action(action: str) -> bool:
