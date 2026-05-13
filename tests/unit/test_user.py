@@ -1,10 +1,14 @@
 """
 Unit tests for User domain model.
+
+ADR-028 Stage 1: User = HumanUser. Tests updated to reflect that
+service accounts are AgentIdentity, not User/HumanUser.
 """
 
 import pytest
 from datetime import datetime
 from swarm_auth.domain.user import User, UserRole
+from swarm_auth.domain.agent_identity import AgentIdentity, AgentType
 
 
 def test_user_creation():
@@ -88,15 +92,32 @@ def test_user_serialization():
 
 
 def test_service_account():
-    """Test service account creation."""
-    service = User(
+    """Service accounts are AgentIdentity, not User/HumanUser (ADR-028 Stage 1).
+
+    Legacy: User(is_service_account=True) still constructs without error for
+    backward compat with existing adapters (jwt_auth.py, vault_broker.py).
+    The is_service_account field is deprecated — use isinstance(p, AgentIdentity).
+    """
+    # Legacy pattern: still works, but deprecated
+    legacy_service = User(
         user_id="svc_1",
         username="api-service",
         role=UserRole.SERVICE,
         is_service_account=True,
     )
+    assert legacy_service.is_service_account is True
+    assert legacy_service.email is None
+    assert legacy_service.has_permission("certify")
+    assert not legacy_service.has_permission("audit")
 
-    assert service.is_service_account is True
-    assert service.email is None  # Service accounts don't need email
-    assert service.has_permission("certify")
-    assert not service.has_permission("audit")  # Service can't audit
+    # New pattern: use AgentIdentity
+    agent_service = AgentIdentity(
+        user_id="svc_1",
+        username="api-service",
+        role=UserRole.SERVICE,
+        agent_type=AgentType.SERVICE,
+    )
+    assert isinstance(agent_service, AgentIdentity)
+    assert agent_service.kind() == "agent"
+    assert agent_service.has_permission("certify")
+    assert not agent_service.has_permission("audit")
