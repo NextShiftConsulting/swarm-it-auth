@@ -11,6 +11,14 @@ Providers:
 - GCP: Workload Identity Federation + service account impersonation
 - OpenAI: Project-scoped API keys
 - Hugging Face: Fine-grained tokens
+
+ADR-028 Stage 2: User -> Principal in type signatures.
+Adapters continue accepting HumanUser (IS-A Principal) — no behavior change.
+
+Stage 3+ TODOs:
+- TODO(Stage 4): validate ToolRequest.resource against scope_constraints.yaml (ADR-027 Gap 2)
+- TODO(Stage 3): propagate ActorChain in vend_credential for audit trail (ADR-026 Rule 6)
+- TODO(Stage 3): replace is_service_account checks with isinstance(principal, AgentIdentity)
 """
 
 from abc import ABC, abstractmethod
@@ -18,6 +26,8 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+
+from swarm_auth.domain.principal import Principal
 
 
 class ProviderType(Enum):
@@ -116,7 +126,7 @@ class CredentialBrokerPort(ABC):
     @abstractmethod
     def vend_credential(
         self,
-        principal: "User",  # From swarm_auth.domain.user
+        principal: Principal,
         tool_request: ToolRequest,
     ) -> ProviderCredential:
         """
@@ -178,7 +188,7 @@ class CredentialBrokerPort(ABC):
     @abstractmethod
     def list_active_credentials(
         self,
-        principal: "User",
+        principal: Principal,
         provider: Optional[ProviderType] = None,
     ) -> list[ProviderCredential]:
         """

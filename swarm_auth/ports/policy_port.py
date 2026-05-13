@@ -5,12 +5,22 @@ Tool-centric authorization for agent systems:
 - Actions: llm.generate, aws.s3.put, gcp.storage.read, etc.
 - Resources: bucket, dataset, project, model
 - Obligations: logging, rate limits, budget constraints
+
+ADR-028 Stage 2: User -> Principal in type signatures.
+Adapters continue accepting HumanUser (IS-A Principal) — no behavior change.
+
+Stage 3+ TODOs:
+- TODO(Stage 3): gate ORCHESTRATOR_ONLY_CAPABILITIES on
+  isinstance(principal, AgentIdentity) and principal.agent_type == AgentType.ORCHESTRATOR
+- TODO(Stage 3): replace is_service_account checks with isinstance(principal, AgentIdentity)
 """
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
+
+from swarm_auth.domain.principal import Principal
 
 
 class Decision(Enum):
@@ -104,7 +114,7 @@ class PolicyDecisionPoint(ABC):
     @abstractmethod
     def evaluate(
         self,
-        principal: "User",  # From swarm_auth.domain.user
+        principal: Principal,
         action: Action,
         resource: Resource,
         context: Optional[PolicyContext] = None,
@@ -141,7 +151,7 @@ class PolicyDecisionPoint(ABC):
     @abstractmethod
     def batch_evaluate(
         self,
-        principal: "User",
+        principal: Principal,
         requests: List[tuple[Action, Resource]],
         context: Optional[PolicyContext] = None,
     ) -> List[PolicyDecision]:
@@ -163,7 +173,7 @@ class PolicyDecisionPoint(ABC):
     @abstractmethod
     def get_allowed_actions(
         self,
-        principal: "User",
+        principal: Principal,
         resource: Resource,
     ) -> List[Action]:
         """
