@@ -4,8 +4,10 @@ Stage 0 xfail: Audit chain and SIEM-parseable JSON.
 Stage 7 status:
   - test_three_hop_act_chain_recorded_in_audit_log: CONVERTED — Stage 7
   - test_audit_event_schema_is_siem_parseable:      CONVERTED — Stage 7
-  - test_audit_port_is_required_constructor_argument: stays xfail (import path
-    refers to swarm_auth.acp.ports which is not the canonical location)
+
+Stage 8 status:
+  - test_audit_port_is_required_constructor_argument: CONVERTED — Stage 8
+    (rewritten to test canonical swarm_auth.ports.audit_port path)
 
 Contract (ADR-028 SD-1, SD-2):
 - A three-hop act chain (human -> orchestrator -> tool) is recorded in
@@ -192,35 +194,40 @@ def test_audit_event_schema_is_siem_parseable() -> None:
     assert deny_event["outcome"] == "failure"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "AuditPort at swarm_auth.acp.ports.audit_port is not the canonical path. "
-        "Canonical: swarm_auth.ports.audit_port (implemented in Stage 5). "
-        "This xfail guards the architectural invariant that all ACP adapters "
-        "require AuditPort as a constructor argument — enforcement not yet wired."
-    ),
-    strict=True,
-)
 def test_audit_port_is_required_constructor_argument() -> None:
     """
-    All ACP adapters require AuditPort as a constructor argument.
+    ACPOrchestrator requires AuditPort as a mandatory constructor argument.
 
-    This enforces the ADR-028 hex-arch convention: no adapter can be
-    instantiated without an audit trail sink. This prevents silent
-    credential vending without an audit record.
+    This enforces the ADR-028 hex-arch convention: no ACP orchestrator can be
+    instantiated without an audit trail sink. AuditPort is abstract (ABC) and
+    lives at swarm_auth.ports.audit_port (canonical path, implemented Stage 5).
 
     Success criteria:
-    1. Instantiating any ACP adapter without audit_port raises TypeError
-    2. Instantiating with audit_port=MemoryAuditAdapter() succeeds
-    3. AuditPort is an ABC (cannot instantiate directly)
-
-    Contract reference: ADR-028 (hex-arch conventions, Section: Adapter Rules)
+    1. Omitting audit raises TypeError
+    2. AuditPort is an ABC — cannot instantiate directly
+    3. Instantiating with MemoryAuditAdapter() (concrete) succeeds
     """
-    from swarm_auth.acp.ports.audit_port import AuditPort  # noqa: F401
-    from swarm_auth.acp.adapters.memory_audit_adapter import MemoryAuditAdapter  # noqa: F401
+    from swarm_auth.ports.audit_port import AuditPort
+    from swarm_auth.adapters.memory_audit import MemoryAuditAdapter
+    from swarm_auth.acp.orchestrator import ACPOrchestrator
+    from unittest.mock import MagicMock
+    from swarm_auth.ports.policy_port import Action, Decision, PolicyDecision, PolicyDecisionPoint, Resource
+    from swarm_auth.ports.credential_broker_port import CredentialBrokerPort
 
     # AuditPort must be abstract — cannot instantiate directly
     with pytest.raises(TypeError):
         AuditPort()  # type: ignore[abstract]
 
-    raise NotImplementedError("AuditPort ABC not implemented at acp.ports path (Stage 2)")
+    # Omitting audit keyword raises TypeError (no default)
+    broker = MagicMock(spec=CredentialBrokerPort)
+    allow_pdp = MagicMock(spec=PolicyDecisionPoint)
+    allow_pdp.evaluate.return_value = PolicyDecision(decision=Decision.ALLOW, reason="ok")
+    with pytest.raises(TypeError, match="audit"):
+        ACPOrchestrator(broker=broker, policy_pipeline=[allow_pdp], signing_key="key")  # type: ignore[call-arg]
+
+    # Instantiating with MemoryAuditAdapter succeeds
+    orch = ACPOrchestrator(
+        broker=broker, policy_pipeline=[allow_pdp],
+        audit=MemoryAuditAdapter(), signing_key="key",
+    )
+    assert orch is not None

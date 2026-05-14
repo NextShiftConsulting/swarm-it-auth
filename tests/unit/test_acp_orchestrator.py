@@ -290,24 +290,35 @@ def test_policy_pipeline_both_allow_broker_called(audit):
     broker.vend_credential.assert_called_once()
 
 
-def test_empty_policy_pipeline_denies_all(audit):
-    """Empty policy_pipeline → no PDP evaluated → request allowed through.
+def test_empty_policy_pipeline_raises_at_construction(audit):
+    """Empty policy_pipeline → ValueError at construction time (fail-closed).
 
-    Note: empty pipeline is a caller misconfiguration. The orchestrator
-    does not inject a default-deny sentinel — it's the caller's
-    responsibility to pass at least one PDP.
+    The orchestrator must reject misconfiguration at __init__ rather than
+    silently allowing requests through with no policy checks.
     """
     broker = _allow_broker()
-    orchestrator = ACPOrchestrator(
-        broker=broker, policy_pipeline=[], audit=audit, signing_key=_KEY,
-    )
-    response = orchestrator.request_credential(DelegatedCredentialRequest(
-        tool_request=_tool_request(), subject_token=_human_token("alice"),
-    ))
-    # Empty pipeline: no PDPs evaluated → broker IS called (caller misconfiguration)
-    # Document this behavior explicitly so callers know to always pass PDPs.
-    assert response.credential is not None
-    broker.vend_credential.assert_called_once()
+    with pytest.raises(ValueError, match="policy_pipeline must contain at least one"):
+        ACPOrchestrator(
+            broker=broker, policy_pipeline=[], audit=audit, signing_key=_KEY,
+        )
+
+
+def test_empty_policy_pipeline_never_calls_broker(audit):
+    """Broker must not be called when orchestrator is misconfigured (empty pipeline).
+
+    This is a belt-and-suspenders check: the ValueError at construction prevents
+    any request from reaching the broker, so we verify no broker call happens
+    even if somehow a zero-PDP orchestrator were created.
+    """
+    broker = _allow_broker()
+    with pytest.raises(ValueError):
+        orch = ACPOrchestrator(
+            broker=broker, policy_pipeline=[], audit=audit, signing_key=_KEY,
+        )
+        orch.request_credential(DelegatedCredentialRequest(
+            tool_request=_tool_request(), subject_token=_human_token("alice"),
+        ))
+    broker.vend_credential.assert_not_called()
 
 
 def test_policy_deny_emits_audit_deny_event(audit):
@@ -960,3 +971,19 @@ def test_make_acp_pipeline_rbac_scope_composition(audit):
         tool_request=_tool_request(), subject_token=_human_token("alice"),
     ))
     assert response.credential is not None
+
+
+def test_composite_pdp_empty_denies():
+    """CompositePDP([]) → DENY (fail-closed). Never allow on empty pipeline."""
+    from swarm_auth.ports.composite_pdp import CompositePDP
+    from swarm_auth.ports.policy_port import Action, Decision, Resource
+    from unittest.mock import MagicMock
+    from swarm_auth.domain.principal import Principal
+
+    pdp = CompositePDP([])
+    principal = MagicMock(spec=Principal)
+    action = Action(verb="GetObject", provider="aws", resource_type="s3")
+    resource = Resource(provider="aws", resource_type="s3", identifier="bucket/key", attributes={})
+    decision = pdp.evaluate(principal, action, resource)
+    assert decision.decision == Decision.DENY
+    assert "empty policy pipeline" in decision.reason

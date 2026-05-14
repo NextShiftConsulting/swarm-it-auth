@@ -49,8 +49,10 @@ class CompositePDP(PolicyDecisionPoint):
     Evaluates all PDPs in insertion order. First DENY short-circuits and
     is returned with its reason intact. If all PDPs allow, returns ALLOW.
 
-    Empty pipeline → ALLOW (vacuously true — pass at least one PDP in
-    production; use ACPOrchestrator.policy_pipeline for safety).
+    Empty pipeline → DENY (fail-closed). Pass at least one PDP.
+    ACPOrchestrator also raises ValueError at construction when given an
+    empty pipeline, so this path only triggers when CompositePDP is used
+    standalone outside the orchestrator.
 
     Args:
         pdps: Sequence of PDPs to evaluate in order. Typically
@@ -71,7 +73,15 @@ class CompositePDP(PolicyDecisionPoint):
         resource: Resource,
         context: Optional[PolicyContext] = None,
     ) -> PolicyDecision:
-        """Evaluate all PDPs; return first DENY or final ALLOW."""
+        """Evaluate all PDPs; return first DENY or final ALLOW.
+
+        Empty pipeline → DENY (fail-closed). Pass at least one PDP.
+        """
+        if not self._pdps:
+            return PolicyDecision(
+                decision=Decision.DENY,
+                reason="empty policy pipeline: no PDPs configured — denying by default",
+            )
         for pdp in self._pdps:
             decision = pdp.evaluate(principal, action, resource, context)
             if decision.decision != Decision.ALLOW:

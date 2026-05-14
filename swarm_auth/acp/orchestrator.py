@@ -179,6 +179,11 @@ class ACPOrchestrator:
         auth: Optional[AuthenticationPort] = None,
         require_dpop_for_delegation: bool = True,
     ) -> None:
+        if not policy_pipeline:
+            raise ValueError(
+                "policy_pipeline must contain at least one PolicyDecisionPoint; "
+                "use make_acp_pipeline(rbac, scope) for the canonical RBAC ∩ scope pipeline."
+            )
         self._broker = broker
         self._policy_pipeline = list(policy_pipeline)
         self._audit = audit
