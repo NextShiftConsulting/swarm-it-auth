@@ -1,27 +1,39 @@
 """
 Stage 0 xfail: RFC 8693 token exchange compatibility.
 
-This test is expected to fail until Stage 5 (RFC8693TokenExchange adapter)
-is implemented. It defines the contract for SD-2 (OAuth 2.1 + RFC 8693).
+Stage 7 status:
+  - test_rfc8693_token_exchange_carries_act_claim: stays xfail (authlib not installed)
+  - test_rfc8693_act_chain_preserved_across_exchange: CONVERTED — Stage 7
 
 Contract (ADR-028 SD-2):
-- authlib OAuth2Session.exchange_token() completes an RFC 8693 token exchange
-  against a test authorization server without requiring custom protocol shims.
-- The resulting token carries an `act` claim identifying the acting agent.
-- The `subject_token_type` is `urn:ietf:params:oauth:token-type:access_token`.
-- The `requested_token_type` is `urn:ietf:params:oauth:token-type:access_token`.
-
-When this test passes unexpectedly (xpass), it means the implementation
-landed outside the plan — treat as a build break and investigate.
+- RFC8693TokenExchangeAdapter preserves an existing act chain from the actor_token
+  in the issued delegation token, matching RFC 8693 §4.1 semantics.
+- ActorChain.from_jwt_claim() reconstructs the chain without data loss.
 """
 
+import time
+
+import jwt as pyjwt
 import pytest
+
+from swarm_auth.adapters.rfc8693_token_exchange import RFC8693TokenExchangeAdapter
+from swarm_auth.domain.agent_identity import ActorChain
+from swarm_auth.ports.token_exchange_port import (
+    DelegationType,
+    TokenExchangeRequest,
+    TokenType,
+)
+
+_KEY = "test-exchange-preserve-chain-key!!"
+_ALG = "HS256"
 
 
 @pytest.mark.xfail(
     reason=(
-        "RFC8693TokenExchange adapter not yet implemented — Stage 0 placeholder. "
-        "Implement in Stage 5 per ADR-027-implementation-plan.md."
+        "authlib not installed — integration with authlib OAuth2Session "
+        "is out of scope until a real authorization server is wired. "
+        "RFC8693TokenExchangeAdapter provides the implementation; "
+        "this test covers the authlib integration layer only."
     ),
     strict=True,
 )
@@ -36,32 +48,76 @@ def test_rfc8693_token_exchange_carries_act_claim() -> None:
     4. No custom protocol shims needed beyond authlib OAuth2Session
     """
     from authlib.integrations.requests_client import OAuth2Session  # noqa: F401
-    from swarm_auth.acp.adapters.rfc8693_token_exchange import RFC8693TokenExchange  # noqa: F401
 
     # Fixture: a local test authorization server that speaks RFC 8693
-    # This fixture does not exist yet — it will be added in Stage 5.
-    raise NotImplementedError("RFC8693TokenExchange adapter not implemented (Stage 5)")
+    raise NotImplementedError("authlib OAuth2Session integration not wired (no test server)")
 
 
-@pytest.mark.xfail(
-    reason=(
-        "ActorChain not yet implemented — Stage 0 placeholder. "
-        "Implement in Stage 1 per ADR-027-implementation-plan.md."
-    ),
-    strict=True,
-)
 def test_rfc8693_act_chain_preserved_across_exchange() -> None:
     """
-    An existing `act` chain in the subject token is preserved after exchange.
+    An existing act chain in the actor_token is preserved after RFC 8693 exchange.
+
+    Scenario: orch-A delegated to orch-B (actor_token has act.sub = "orch-A").
+    After exchange with subject "alice", the output token must carry the full
+    three-node chain: alice → orch-B → orch-A.
 
     Success criteria:
-    1. Input token has act.act.sub (two-hop delegation: human -> orchestrator -> tool)
-    2. After RFC 8693 exchange, the output token retains the full act chain
-    3. ActorChain.from_jwt() reconstructs the chain without data loss
+    1. Output token act.sub == "orch-B" (immediate actor)
+    2. Output token act.act.sub == "orch-A" (prior delegator preserved)
+    3. ActorChain.from_jwt_claim() reconstructs the chain without data loss
+    4. chain.sub == "orch-B", chain.act.sub == "orch-A"
 
-    Contract reference: ADR-028 SD-2, ADR-027 SD-4 (flat delegation fix)
+    Contract reference: ADR-028 SD-2, ADR-027 Gap 4 (flat delegation fix)
     """
-    # domain is authoritative — ActorChain lives in swarm_auth.domain, re-exported via acp
-    from swarm_auth.domain.agent_identity import ActorChain  # noqa: F401
+    now = int(time.time())
 
-    raise NotImplementedError("RFC8693 act chain preservation not implemented (Stage 5)")
+    # subject_token: human user "alice"
+    subject_token = pyjwt.encode(
+        {"sub": "alice", "principal_kind": "human", "iat": now, "exp": now + 3600},
+        _KEY, algorithm=_ALG,
+    )
+
+    # actor_token: orch-B, which was itself delegated-to by orch-A
+    # (two-hop chain already in the actor token: orch-A → orch-B)
+    actor_token = pyjwt.encode(
+        {
+            "sub": "orch-B",
+            "principal_kind": "agent",
+            "agent_type": "orchestrator",
+            "iat": now,
+            "exp": now + 3600,
+            "act": {"sub": "orch-A"},   # orch-A delegated to orch-B
+        },
+        _KEY, algorithm=_ALG,
+    )
+
+    exchanger = RFC8693TokenExchangeAdapter(signing_key=_KEY)
+    response = exchanger.exchange(TokenExchangeRequest(
+        subject_token=subject_token,
+        subject_token_type=TokenType.ACCESS_TOKEN,
+        requested_token_type=TokenType.ACCESS_TOKEN,
+        actor_token=actor_token,
+        actor_token_type=TokenType.ACCESS_TOKEN,
+        delegation_type=DelegationType.DELEGATION,
+    ))
+
+    assert response.error is None, response.error_description
+    assert response.access_token is not None
+
+    claims = pyjwt.decode(
+        response.access_token, _KEY,
+        algorithms=[_ALG], options={"verify_aud": False},
+    )
+
+    # Full chain preserved: alice delegates to orch-B which was delegated by orch-A
+    assert "act" in claims, "act claim missing from issued delegation token"
+    assert claims["act"]["sub"] == "orch-B"
+    assert "act" in claims["act"], "prior delegation hop (orch-A) lost after exchange"
+    assert claims["act"]["act"]["sub"] == "orch-A"
+
+    # ActorChain domain type reconstructs without data loss
+    chain = ActorChain.from_jwt_claim(claims["act"])
+    assert chain.sub == "orch-B"
+    assert chain.act is not None
+    assert chain.act.sub == "orch-A"
+    assert chain.act.act is None  # two-hop chain — leaf reached

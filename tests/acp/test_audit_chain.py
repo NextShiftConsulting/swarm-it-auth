@@ -1,72 +1,127 @@
 """
 Stage 0 xfail: Audit chain and SIEM-parseable JSON.
 
-This test is expected to fail until Stage 2 (AuditPort + MemoryAuditAdapter)
-is implemented. It defines the contract for the audit trail requirement
-in ADR-027 Gap 1 (SERVICE role conflation) and Gap 4 (flat delegation chains).
+Stage 7 status:
+  - test_three_hop_act_chain_recorded_in_audit_log: CONVERTED — Stage 7
+  - test_audit_event_schema_is_siem_parseable:      CONVERTED — Stage 7
+  - test_audit_port_is_required_constructor_argument: stays xfail (import path
+    refers to swarm_auth.acp.ports which is not the canonical location)
 
 Contract (ADR-028 SD-1, SD-2):
 - A three-hop act chain (human -> orchestrator -> tool) is recorded in
-  MemoryAuditAdapter as structured JSON events.
-- Each event is SIEM-parseable: has `timestamp`, `event_type`, `principal_kind`,
-  `subject`, `actor`, and `resource` fields.
-- The full chain is reconstructable from audit events without querying the token.
-
-When this test passes unexpectedly (xpass), it means the implementation
-landed outside the plan — treat as a build break and investigate.
+  MemoryAuditAdapter as structured AuditEvent objects.
+- Each event is SIEM-parseable: get_events() returns JSON-serializable dicts
+  with all required SIEM fields present.
+- principal_kind is always "human" or "agent" — never SERVICE (ADR-027 Gap 1 fix).
 """
 
 import json
+
 import pytest
 
 
-@pytest.mark.xfail(
-    reason=(
-        "MemoryAuditAdapter not yet implemented — Stage 0 placeholder. "
-        "Implement in Stage 2 per ADR-027-implementation-plan.md."
-    ),
-    strict=True,
-)
 def test_three_hop_act_chain_recorded_in_audit_log() -> None:
     """
     Three-hop delegation chain (human -> orchestrator -> tool) emits
-    SIEM-parseable JSON audit events via MemoryAuditAdapter.
+    structured AuditEvents via MemoryAuditAdapter.
 
     Chain:
-        human (HumanUser, subject) delegates to
-        orchestrator (AgentIdentity, actor) which delegates to
-        tool (AgentIdentity, actor.actor)
+        human "alice" (subject) delegates to
+        "orch-001" (actor, chain_depth=1) which delegates to
+        "tool-001" (actor, chain_depth=2) — credential vended at chain_depth=3
 
     Success criteria:
     1. MemoryAuditAdapter records one event per delegation hop
-    2. Each event is valid JSON with required SIEM fields
-    3. Events can be replayed to reconstruct the full act chain
-    4. No data loss: subject.sub, actor.sub, actor.actor.sub all present
+    2. Events carry ActorChainSnapshot with correct depth and actor subs
+    3. raw_act_claim is preserved in deep-hop events (data loss check)
+    4. No data loss: subject, actor.sub, actor.actor.sub all present
+    5. All events are JSON-serializable via LoggingAuditAdapter._to_dict()
 
     Contract reference: ADR-027 Gap 4, ADR-028 SD-1 (principal_kind discriminator)
     """
-    from swarm_auth.acp.adapters.memory_audit_adapter import MemoryAuditAdapter  # noqa: F401
-    # domain is authoritative — ActorChain/AgentIdentity/HumanUser live in swarm_auth.domain
-    from swarm_auth.domain.agent_identity import ActorChain, AgentIdentity  # noqa: F401
-    from swarm_auth.domain.human_user import HumanUser  # noqa: F401
+    from swarm_auth.adapters.memory_audit import MemoryAuditAdapter
+    from swarm_auth.adapters.logging_audit import LoggingAuditAdapter
+    from swarm_auth.ports.audit_port import AuditEvent, AuditEventType, ActorChainSnapshot
 
-    raise NotImplementedError("MemoryAuditAdapter not implemented (Stage 2)")
+    audit = MemoryAuditAdapter()
+
+    # Hop 1: human alice delegates authority to orch-001
+    audit.emit(AuditEvent(
+        event_type=AuditEventType.DELEGATION_ACCEPTED,
+        principal_id="alice",
+        actor_chain=ActorChainSnapshot(
+            subject="alice",
+            actor="orch-001",
+            chain_depth=1,
+        ),
+    ))
+
+    # Hop 2: orch-001 re-delegates to tool-001 (two-hop chain)
+    audit.emit(AuditEvent(
+        event_type=AuditEventType.DELEGATION_ACCEPTED,
+        principal_id="orch-001",
+        actor_chain=ActorChainSnapshot(
+            subject="orch-001",
+            actor="tool-001",
+            chain_depth=2,
+            raw_act_claim={"sub": "tool-001", "act": {"sub": "orch-001"}},
+        ),
+    ))
+
+    # Hop 3: credential vended to tool-001 at the end of the chain
+    audit.emit(AuditEvent(
+        event_type=AuditEventType.CREDENTIAL_VENDED,
+        principal_id="tool-001",
+        provider="aws",
+        resource="arn:aws:s3:::swarm-data/*",
+        actor_chain=ActorChainSnapshot(
+            subject="alice",
+            actor="tool-001",
+            chain_depth=3,
+            raw_act_claim={
+                "sub": "tool-001",
+                "act": {"sub": "orch-001", "act": {"sub": "alice"}},
+            },
+        ),
+    ))
+
+    events = audit.recorded()
+    assert len(events) == 3, f"Expected 3 events, got {len(events)}"
+
+    # Chain depth progression
+    chain_events = [e for e in events if e.actor_chain is not None]
+    depths = [e.actor_chain.chain_depth for e in chain_events]
+    assert depths == [1, 2, 3], f"Expected depths [1,2,3], got {depths}"
+
+    # All actors present throughout the chain
+    actors = [e.actor_chain.actor for e in chain_events]
+    assert "orch-001" in actors
+    assert "tool-001" in actors
+
+    # raw_act_claim preserved in deep-hop events (no data loss)
+    last = events[-1]
+    assert last.actor_chain.raw_act_claim is not None
+    assert last.actor_chain.raw_act_claim["sub"] == "tool-001"
+    assert last.actor_chain.raw_act_claim["act"]["sub"] == "orch-001"
+    assert last.actor_chain.raw_act_claim["act"]["act"]["sub"] == "alice"
+
+    # Every event is JSON-serializable (SIEM requirement — RFC 8259)
+    for event in events:
+        d = LoggingAuditAdapter._to_dict(event)
+        serialized = json.dumps(d, default=str)
+        parsed = json.loads(serialized)
+        assert "event_type" in parsed
+        assert "principal_id" in parsed
+        assert "timestamp" in parsed
 
 
-@pytest.mark.xfail(
-    reason=(
-        "MemoryAuditAdapter not yet implemented — Stage 0 placeholder. "
-        "Implement in Stage 2 per ADR-027-implementation-plan.md."
-    ),
-    strict=True,
-)
 def test_audit_event_schema_is_siem_parseable() -> None:
     """
-    Each audit event emitted by MemoryAuditAdapter is valid SIEM-parseable JSON.
+    Each audit event from MemoryAuditAdapter.get_events() is valid SIEM-parseable JSON.
 
     Required fields per event:
         - timestamp: ISO-8601 UTC
-        - event_type: str (e.g., "token_exchange", "credential_request", "delegation")
+        - event_type: str (e.g., "delegation.accepted", "credential.vended")
         - principal_kind: "human" | "agent" (ADR-028 SD-1 discriminator)
         - subject: str (sub claim of the subject token)
         - actor: str | None (sub claim of the acting agent, if delegation present)
@@ -77,39 +132,72 @@ def test_audit_event_schema_is_siem_parseable() -> None:
     Success criteria:
     1. MemoryAuditAdapter.get_events() returns a list of dicts
     2. Each dict passes json.dumps() without error
-    3. Each dict has all required fields (extra fields allowed)
-    4. `principal_kind` is always "human" or "agent" — never SERVICE (ADR-027 Gap 1 fix)
+    3. Each dict has all required SIEM fields
+    4. principal_kind is always "human" or "agent" — never SERVICE (ADR-027 Gap 1 fix)
 
     Contract reference: ADR-027 Gap 1 (SERVICE role conflation), ADR-028 SD-1
     """
-    from swarm_auth.acp.adapters.memory_audit_adapter import MemoryAuditAdapter  # noqa: F401
+    from swarm_auth.adapters.memory_audit import MemoryAuditAdapter
+    from swarm_auth.ports.audit_port import AuditEvent, AuditEventType, ActorChainSnapshot
 
     REQUIRED_FIELDS = {
         "timestamp", "event_type", "principal_kind",
         "subject", "actor", "resource", "outcome", "reason",
     }
 
-    adapter = MemoryAuditAdapter()
-    events = adapter.get_events()
+    audit = MemoryAuditAdapter()
 
-    # No events yet — but the schema contract is what matters here
+    # Emit a delegation event to exercise the SIEM field schema
+    audit.emit(AuditEvent(
+        event_type=AuditEventType.DELEGATION_ACCEPTED,
+        principal_id="alice",
+        resource="arn:aws:s3:::swarm-data/*",
+        actor_chain=ActorChainSnapshot(
+            subject="alice",
+            actor="orch-001",
+            chain_depth=1,
+        ),
+    ))
+
+    # Emit a deny event to verify outcome=failure mapping
+    audit.emit(AuditEvent(
+        event_type=AuditEventType.POLICY_DENY,
+        principal_id="alice",
+        decision_reason="scope policy denied",
+    ))
+
+    events = audit.get_events()
+    assert len(events) == 2
+
     for event in events:
-        serialized = json.dumps(event)  # must not raise
+        # Must be JSON-serializable (RFC 8259)
+        serialized = json.dumps(event)
         parsed = json.loads(serialized)
+
+        # All required SIEM fields present
         missing = REQUIRED_FIELDS - set(parsed.keys())
         assert not missing, f"Audit event missing required SIEM fields: {missing}"
+
+        # principal_kind must be "human" or "agent" — never SERVICE (ADR-027 Gap 1)
         assert parsed["principal_kind"] in ("human", "agent"), (
-            f"principal_kind must be 'human' or 'agent', got {parsed['principal_kind']!r}. "
+            f"principal_kind must be 'human' or 'agent', "
+            f"got {parsed['principal_kind']!r}. "
             "SERVICE is not a valid principal_kind (ADR-027 Gap 1)."
         )
 
-    raise NotImplementedError("MemoryAuditAdapter not implemented (Stage 2)")
+    # Verify outcome field mapping
+    allow_event = events[0]  # DELEGATION_ACCEPTED → success
+    deny_event = events[1]   # POLICY_DENY → failure
+    assert allow_event["outcome"] == "success"
+    assert deny_event["outcome"] == "failure"
 
 
 @pytest.mark.xfail(
     reason=(
-        "AuditPort ABC not yet defined — Stage 0 placeholder. "
-        "Implement in Stage 2 per ADR-027-implementation-plan.md."
+        "AuditPort at swarm_auth.acp.ports.audit_port is not the canonical path. "
+        "Canonical: swarm_auth.ports.audit_port (implemented in Stage 5). "
+        "This xfail guards the architectural invariant that all ACP adapters "
+        "require AuditPort as a constructor argument — enforcement not yet wired."
     ),
     strict=True,
 )
@@ -135,4 +223,4 @@ def test_audit_port_is_required_constructor_argument() -> None:
     with pytest.raises(TypeError):
         AuditPort()  # type: ignore[abstract]
 
-    raise NotImplementedError("AuditPort ABC not implemented (Stage 2)")
+    raise NotImplementedError("AuditPort ABC not implemented at acp.ports path (Stage 2)")

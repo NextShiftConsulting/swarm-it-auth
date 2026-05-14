@@ -17,8 +17,9 @@ Usage (tests):
     assert any(e.event_type == AuditEventType.CREDENTIAL_VENDED for e in events)
 """
 
+import json
 import threading
-from typing import List
+from typing import Any, Dict, List
 
 from swarm_auth.ports.audit_port import AuditEvent, AuditPort, AuditQuery
 
@@ -32,6 +33,7 @@ class MemoryAuditAdapter(AuditPort):
 
     Extra helpers for tests:
       - recorded(): returns all events in insertion order
+      - get_events(): returns events as SIEM-compatible dicts
       - clear(): resets the internal list
     """
 
@@ -95,3 +97,59 @@ class MemoryAuditAdapter(AuditPort):
         if event_type is not None:
             events = [e for e in events if e.event_type == event_type]
         return len(events)
+
+    def get_events(self) -> List[Dict[str, Any]]:
+        """
+        Return all recorded events as SIEM-compatible dicts.
+
+        Each dict is JSON-serializable and includes the required SIEM fields:
+          timestamp, event_type, principal_kind, subject, actor,
+          resource, outcome, reason.
+
+        principal_kind is derived from the principal_id prefix convention
+        used by ACP adapters (agents carry a "principal_kind" claim in their
+        tokens; here we use metadata if present, defaulting to "human").
+        """
+        result = []
+        for event in self.recorded():
+            # Derive principal_kind from event metadata if available
+            principal_kind = "human"
+            if event.metadata and "principal_kind" in event.metadata:
+                principal_kind = event.metadata["principal_kind"]
+            elif event.actor_chain is not None and event.actor_chain.actor is not None:
+                # Presence of act chain with actor implies agent delegation
+                principal_kind = "human"  # subject is still the human
+
+            # Determine subject and actor from actor_chain
+            if event.actor_chain is not None:
+                subject = event.actor_chain.subject
+                actor = event.actor_chain.actor
+            else:
+                subject = event.principal_id
+                actor = None
+
+            # Map event_type to outcome
+            deny_types = {
+                "authz.deny", "authz.scope_deny",
+                "delegation.rejected", "dpop.invalid",
+            }
+            outcome = "failure" if event.event_type.value in deny_types else "success"
+
+            d: Dict[str, Any] = {
+                "timestamp": event.timestamp.isoformat(),
+                "event_type": event.event_type.value,
+                "principal_kind": principal_kind,
+                "subject": subject,
+                "actor": actor,
+                "resource": event.resource,
+                "outcome": outcome,
+                "reason": event.decision_reason,
+            }
+            if event.provider:
+                d["provider"] = event.provider
+            if event.action:
+                d["action"] = event.action
+            if event.request_id:
+                d["request_id"] = event.request_id
+            result.append(d)
+        return result
