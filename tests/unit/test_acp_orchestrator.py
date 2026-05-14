@@ -136,13 +136,19 @@ def token_exchange():
 
 @pytest.fixture
 def orchestrator(broker, audit, token_exchange):
-    """Fully wired orchestrator with real token exchange adapter."""
+    """Fully wired orchestrator with real token exchange adapter.
+
+    require_dpop_for_delegation=False so delegation tests that don't
+    specifically test DPoP enforcement can pass actor_token freely.
+    Use require_dpop_for_delegation=True in DPoP enforcement tests.
+    """
     return ACPOrchestrator(
         broker=broker,
         policy_pipeline=[_allow_pdp()],
         audit=audit,
         signing_key=_KEY,
         token_exchange=token_exchange,
+        require_dpop_for_delegation=False,
     )
 
 
@@ -178,6 +184,7 @@ def test_broker_receives_actor_chain_in_enriched_request(audit, token_exchange):
         audit=audit,
         signing_key=_KEY,
         token_exchange=token_exchange,
+        require_dpop_for_delegation=False,
     )
     orchestrator.request_credential(DelegatedCredentialRequest(
         tool_request=_tool_request(),
@@ -217,6 +224,7 @@ def test_existing_scope_restrictions_preserved_in_enrichment(audit, token_exchan
     orchestrator = ACPOrchestrator(
         broker=broker, policy_pipeline=[_allow_pdp()], audit=audit,
         signing_key=_KEY, token_exchange=token_exchange,
+        require_dpop_for_delegation=False,
     )
     tool_req = dataclasses.replace(_tool_request(), scope_restrictions={"region": "us-east-1"})
     orchestrator.request_credential(DelegatedCredentialRequest(
@@ -551,6 +559,7 @@ def test_actor_token_without_exchange_port_denied(audit):
     broker = _allow_broker()
     orchestrator = ACPOrchestrator(
         broker=broker, policy_pipeline=[_allow_pdp()], audit=audit, signing_key=_KEY,
+        require_dpop_for_delegation=False,
     )
     response = orchestrator.request_credential(DelegatedCredentialRequest(
         tool_request=_tool_request(),
@@ -665,6 +674,7 @@ def test_get_events_includes_raw_act_claim(audit, token_exchange):
     orchestrator = ACPOrchestrator(
         broker=_allow_broker(), policy_pipeline=[_allow_pdp()],
         audit=audit, signing_key=_KEY, token_exchange=token_exchange,
+        require_dpop_for_delegation=False,
     )
     orchestrator.request_credential(DelegatedCredentialRequest(
         tool_request=_tool_request(),
@@ -727,6 +737,7 @@ def test_end_to_end_nested_act_chain_preserved(audit, token_exchange):
         audit=audit,
         signing_key=_KEY,
         token_exchange=token_exchange,
+        require_dpop_for_delegation=False,
     )
 
     # actor_token for orch-B, which was itself delegated-to by orch-A
@@ -758,3 +769,194 @@ def test_end_to_end_nested_act_chain_preserved(audit, token_exchange):
     # 3. SIEM export includes full actor_chain block
     siem = audit.get_events()
     assert siem[0]["actor_chain"]["raw_act_claim"]["act"]["sub"] == "orch-A"
+
+
+# ---------------------------------------------------------------------------
+# Stage 8: DPoP enforcement (Gap 2 fix)
+# ---------------------------------------------------------------------------
+
+
+def test_require_dpop_for_delegation_rejects_actor_without_proof(audit, token_exchange):
+    """require_dpop_for_delegation=True (default) → actor_token without dpop_proof denied."""
+    broker = _allow_broker()
+    orchestrator = ACPOrchestrator(
+        broker=broker,
+        policy_pipeline=[_allow_pdp()],
+        audit=audit,
+        signing_key=_KEY,
+        token_exchange=token_exchange,
+        require_dpop_for_delegation=True,
+    )
+    response = orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_human_token("alice"),
+        actor_token=_agent_token("orch-001"),
+        # dpop_proof intentionally absent
+    ))
+    assert response.credential is None
+    assert response.error == "invalid_dpop_proof"
+    assert "DPoP proof is required" in response.error_description
+    broker.vend_credential.assert_not_called()
+
+
+def test_require_dpop_for_delegation_emits_dpop_invalid_event(audit, token_exchange):
+    """DPoP enforcement deny emits DPOP_INVALID audit event (not POLICY_DENY)."""
+    orchestrator = ACPOrchestrator(
+        broker=_allow_broker(),
+        policy_pipeline=[_allow_pdp()],
+        audit=audit,
+        signing_key=_KEY,
+        token_exchange=token_exchange,
+        require_dpop_for_delegation=True,
+    )
+    orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_human_token("alice"),
+        actor_token=_agent_token("orch-001"),
+    ))
+    events = [e for e in audit.recorded() if e.event_type == AuditEventType.DPOP_INVALID]
+    assert len(events) == 1
+    assert "DPoP proof is required" in events[0].decision_reason
+
+
+def test_require_dpop_false_allows_actor_without_proof(audit, token_exchange):
+    """require_dpop_for_delegation=False → actor_token without dpop_proof allowed through."""
+    broker = _allow_broker()
+    orchestrator = ACPOrchestrator(
+        broker=broker,
+        policy_pipeline=[_allow_pdp()],
+        audit=audit,
+        signing_key=_KEY,
+        token_exchange=token_exchange,
+        require_dpop_for_delegation=False,
+    )
+    response = orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_human_token("alice"),
+        actor_token=_agent_token("orch-001"),
+    ))
+    assert response.credential is not None
+    assert response.error is None
+
+
+# ---------------------------------------------------------------------------
+# Stage 8: richer audit event types
+# ---------------------------------------------------------------------------
+
+
+def test_auth_failure_emits_auth_failure_event(audit):
+    """Invalid subject_token → AUTH_FAILURE event (not POLICY_DENY)."""
+    orchestrator = ACPOrchestrator(
+        broker=_allow_broker(), policy_pipeline=[_allow_pdp()],
+        audit=audit, signing_key=_KEY,
+    )
+    orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(), subject_token="not.a.jwt",
+    ))
+    events = [e for e in audit.recorded() if e.event_type == AuditEventType.AUTH_FAILURE]
+    assert len(events) == 1
+
+
+def test_dpop_invalid_emits_dpop_invalid_event(audit):
+    """DPoP proof invalid → DPOP_INVALID event (not POLICY_DENY)."""
+    orchestrator = ACPOrchestrator(
+        broker=_allow_broker(), policy_pipeline=[_allow_pdp()],
+        audit=audit, signing_key=_KEY,
+        dpop_validator=_dpop_validator_returning(None, valid=False),
+    )
+    orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_human_token("alice"),
+        dpop_proof=_dpop_proof_stub(),
+    ))
+    events = [e for e in audit.recorded() if e.event_type == AuditEventType.DPOP_INVALID]
+    assert len(events) == 1
+
+
+def test_dpop_valid_emitted_on_successful_proof(audit):
+    """Successful DPoP validation → DPOP_VALID event emitted (positive SIEM signal)."""
+    broker = _allow_broker()
+    orchestrator = ACPOrchestrator(
+        broker=broker, policy_pipeline=[_allow_pdp()],
+        audit=audit, signing_key=_KEY,
+        dpop_validator=_dpop_validator_returning("agent-007"),
+    )
+    orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_agent_token("agent-007", agent_type="tool"),
+        dpop_proof=_dpop_proof_stub(),
+    ))
+    events = [e for e in audit.recorded() if e.event_type == AuditEventType.DPOP_VALID]
+    assert len(events) == 1
+
+
+def test_delegation_rejected_emits_delegation_rejected_event(audit):
+    """Token exchange failure → DELEGATION_REJECTED event (not POLICY_DENY)."""
+    orchestrator = ACPOrchestrator(
+        broker=_allow_broker(), policy_pipeline=[_allow_pdp()],
+        audit=audit, signing_key=_KEY,
+        require_dpop_for_delegation=False,
+        # No token_exchange → actor_token triggers DELEGATION_REJECTED
+    )
+    orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_human_token("alice"),
+        actor_token=_agent_token("orch-001"),
+    ))
+    events = [e for e in audit.recorded() if e.event_type == AuditEventType.DELEGATION_REJECTED]
+    assert len(events) == 1
+
+
+# ---------------------------------------------------------------------------
+# Stage 8: CompositePDP / make_acp_pipeline
+# ---------------------------------------------------------------------------
+
+
+def test_composite_pdp_both_allow(audit):
+    """CompositePDP(rbac, scope): both ALLOW → credential issued."""
+    from swarm_auth.ports.composite_pdp import CompositePDP
+    broker = _allow_broker()
+    orchestrator = ACPOrchestrator(
+        broker=broker,
+        policy_pipeline=[CompositePDP([_allow_pdp(), _allow_pdp()])],
+        audit=audit, signing_key=_KEY,
+    )
+    response = orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(), subject_token=_human_token("alice"),
+    ))
+    assert response.credential is not None
+
+
+def test_composite_pdp_first_deny_short_circuits(audit):
+    """CompositePDP(deny, allow): first PDP denies → second not evaluated → deny."""
+    from swarm_auth.ports.composite_pdp import CompositePDP
+    deny = _deny_pdp("rbac denied")
+    allow = _allow_pdp()
+    broker = _allow_broker()
+    orchestrator = ACPOrchestrator(
+        broker=broker,
+        policy_pipeline=[CompositePDP([deny, allow])],
+        audit=audit, signing_key=_KEY,
+    )
+    response = orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(), subject_token=_human_token("alice"),
+    ))
+    assert response.credential is None
+    assert "rbac denied" in response.error_description
+    allow.evaluate.assert_not_called()
+    broker.vend_credential.assert_not_called()
+
+
+def test_make_acp_pipeline_rbac_scope_composition(audit):
+    """make_acp_pipeline(rbac, scope): RBAC ALLOW + scope ALLOW → credential issued."""
+    from swarm_auth.ports.composite_pdp import make_acp_pipeline
+    broker = _allow_broker()
+    pipeline = make_acp_pipeline(rbac=_allow_pdp(), scope=_allow_pdp())
+    orchestrator = ACPOrchestrator(
+        broker=broker, policy_pipeline=[pipeline],
+        audit=audit, signing_key=_KEY,
+    )
+    response = orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(), subject_token=_human_token("alice"),
+    ))
+    assert response.credential is not None

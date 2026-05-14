@@ -130,8 +130,10 @@ class MemoryAuditAdapter(AuditPort):
 
             # outcome: deny event types map to "failure"
             _DENY_EVENT_TYPES = {
+                "auth.failure",
                 "authz.deny", "authz.scope_deny",
-                "delegation.rejected", "dpop.invalid",
+                "delegation.rejected",
+                "dpop.invalid",
             }
             outcome = "failure" if event.event_type.value in _DENY_EVENT_TYPES else "success"
 

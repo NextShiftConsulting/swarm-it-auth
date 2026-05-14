@@ -1,12 +1,12 @@
 """
 ACPOrchestrator — Agentic Credential Protocol orchestrator.
 
-ADR-027 Stage 7 / Stage 7 security-review fix.
+ADR-027 Stage 7 / Stage 8 hardening.
 
 Standards references:
   - RFC 8693 §4.1: act claim (delegation chain)
   - RFC 9449 §4.2: DPoP proof validation (10 steps)
-  - RFC 9449 §7.1: DPoP proof binding to actor key
+  - RFC 9449 §7.1: DPoP proof binding to proximate actor key
   - RFC 8707 §2: resource indicator
   - ADR-026 Rule 6: ProviderCredential only from CredentialBrokerPort
   - ADR-028 SD-1: principal_kind discriminator (human | agent)
@@ -14,48 +14,50 @@ Standards references:
 Pipeline order
 --------------
 1.  Decode subject_token → Principal (via auth port if wired, direct decode otherwise)
-2.  Validate DPoP proof (if dpop_proof present and dpop_validator wired)
-2b. Bind DPoP agent_id to actor_token subject or agent subject (RFC 9449 §7.1)
-3.  Token exchange — extract act claim (if actor_token present and token_exchange wired)
+2.  DPoP enforcement: if require_dpop_for_delegation and actor_token present but
+    no dpop_proof → DPOP_INVALID deny
+2b. Validate DPoP proof (if dpop_proof present and dpop_validator wired)
+2c. Bind DPoP agent_id to actor_token subject or subject agent (RFC 9449 §7.1)
+2d. Emit DPOP_VALID on successful DPoP validation
+3.  Token exchange — extract act claim (if actor_token and token_exchange wired)
 4.  Policy pipeline: evaluate ALL PDPs in sequence; first DENY short-circuits
 5.  Enrich ToolRequest with actor-chain context (scope_restrictions + principal_id)
 6.  Broker call: CredentialBrokerPort.vend_credential()
-7.  Emit AuditEvent (ALLOW or DENY) with principal_kind in metadata
+7.  Emit CREDENTIAL_VENDED or specific deny event type
+
+Audit event mapping
+-------------------
+  Stage                         | Event type
+  ------------------------------|---------------------------
+  subject_token invalid/expired | AUTH_FAILURE
+  DPoP required but absent      | DPOP_INVALID
+  DPoP proof invalid            | DPOP_INVALID
+  DPoP binding mismatch         | DPOP_INVALID
+  DPoP proof valid              | DPOP_VALID
+  Token exchange failed         | DELEGATION_REJECTED
+  actor_token, no exchange port | DELEGATION_REJECTED
+  Policy pipeline DENY          | POLICY_DENY
+  Broker error                  | POLICY_DENY (infrastructure)
+  Credential issued             | CREDENTIAL_VENDED
 
 ADR-026 Rule 6 invariant
 ------------------------
 ACPOrchestrator NEVER creates ProviderCredential directly.
 All credential material comes exclusively from CredentialBrokerPort.vend_credential().
 
-Security notes
---------------
-- Policy pipeline: pass [RBACPolicyAdapter, ScopePolicyAdapter] to enforce
-  RBAC ∩ scope. Passing only ScopePolicyAdapter skips RBAC — the caller
-  is responsible for including all required PDPs.
-- DPoP binding: dpop_result.agent_id must equal actor_token sub (or subject
-  agent user_id for subject-only flows). Key registration must use the same
-  id as the JWT sub for the binding to be enforceable.
-- principal_kind: tokens with a non-null unknown principal_kind are rejected;
-  missing principal_kind defaults to "human" for backward compatibility.
-
 Usage:
+    from swarm_auth.ports.composite_pdp import make_acp_pipeline
+
     orchestrator = ACPOrchestrator(
         broker=MyBrokerAdapter(),
-        policy_pipeline=[RBACPolicyAdapter(...), ScopePolicyAdapter(...)],
+        policy_pipeline=[make_acp_pipeline(rbac=RBACPolicyAdapter(...),
+                                           scope=ScopePolicyAdapter(...))],
         audit=MemoryAuditAdapter(),
         signing_key="shared-hs256-key",
         token_exchange=RFC8693TokenExchangeAdapter(...),
         dpop_validator=StrictDPoPValidator(...),
-        auth=JWTAuthAdapter(...),  # optional — use when auth port is already wired
+        require_dpop_for_delegation=True,   # default: True
     )
-    response = orchestrator.request_credential(DelegatedCredentialRequest(
-        tool_request=ToolRequest(...),
-        subject_token=human_jwt,
-        actor_token=orchestrator_jwt,
-        dpop_proof=dpop_proof_object,
-        expected_htm="POST",
-        expected_htu="https://auth.swarms.network/credentials",
-    ))
 """
 
 from __future__ import annotations
@@ -108,6 +110,9 @@ class DelegatedCredentialRequest:
     All credential requests must carry a subject_token. actor_token and
     dpop_proof are optional; when present they activate the corresponding
     pipeline steps (token exchange and DPoP validation respectively).
+
+    When require_dpop_for_delegation=True (default), actor_token without
+    dpop_proof is rejected at step 2.
     """
 
     tool_request: ToolRequest
@@ -141,12 +146,13 @@ class CredentialResponse:
 
 class ACPOrchestrator:
     """
-    ACP pipeline: authenticate → DPoP → exchange → policy pipeline → broker → audit.
+    ACP pipeline: authenticate → DPoP enforcement → exchange → policy → broker → audit.
 
     Constructor requirements:
         broker:          MANDATORY — all credential material flows through it
         policy_pipeline: MANDATORY — list of PDPs, all evaluated (RBAC first,
-                         then scope). Empty list → every request is denied.
+                         then scope). Use CompositePDP([rbac, scope]) or
+                         make_acp_pipeline(rbac, scope) for safe composition.
         audit:           MANDATORY — every allow and deny is logged
         signing_key:     MANDATORY — used to decode subject/actor tokens (HS256)
                          when auth port is not wired
@@ -154,11 +160,9 @@ class ACPOrchestrator:
         dpop_validator:  optional — wire StrictDPoPValidator for DPoP-bound tokens
         auth:            optional — wire AuthenticationPort to delegate principal
                          construction to the canonical adapter
-
-    Policy pipeline semantics:
-        All PDPs in policy_pipeline are evaluated in order. The first DENY
-        short-circuits and the request is denied. Pass [RBACPolicyAdapter(),
-        ScopePolicyAdapter(...)] to enforce RBAC ∩ scope.
+        require_dpop_for_delegation: default True — reject actor_token without
+                         dpop_proof. Set False only for deployments that have
+                         not yet rolled out DPoP infrastructure.
 
     ADR-026 Rule 6: ACPOrchestrator.request_credential() never instantiates
     ProviderCredential. It only returns the instance from broker.vend_credential().
@@ -173,6 +177,7 @@ class ACPOrchestrator:
         token_exchange: Optional[TokenExchangePort] = None,
         dpop_validator: Optional[DPoPValidatorPort] = None,
         auth: Optional[AuthenticationPort] = None,
+        require_dpop_for_delegation: bool = True,
     ) -> None:
         self._broker = broker
         self._policy_pipeline = list(policy_pipeline)
@@ -181,6 +186,7 @@ class ACPOrchestrator:
         self._token_exchange = token_exchange
         self._dpop_validator = dpop_validator
         self._auth = auth
+        self._require_dpop_for_delegation = require_dpop_for_delegation
 
     # ------------------------------------------------------------------
     # Public interface
@@ -196,17 +202,30 @@ class ACPOrchestrator:
         # Step 1: authenticate subject_token → Principal
         principal, err = self._authenticate(request.subject_token)
         if err:
-            self._emit_deny("<unknown>", "human", err, request.tool_request)
+            self._emit(AuditEventType.AUTH_FAILURE, "<unknown>", "human", err, request.tool_request)
             return CredentialResponse(credential=None, error="invalid_request", error_description=err)
 
         principal_kind = principal.kind()
 
-        # Step 2: DPoP validation (optional port)
+        # Step 2: DPoP enforcement — delegated flows require DPoP by default (Gap 2 fix)
+        if (
+            self._require_dpop_for_delegation
+            and request.actor_token is not None
+            and request.dpop_proof is None
+        ):
+            reason = (
+                "DPoP proof is required when actor_token is present "
+                "(set require_dpop_for_delegation=False to disable)"
+            )
+            self._emit(AuditEventType.DPOP_INVALID, principal.user_id, principal_kind, reason, request.tool_request)
+            return CredentialResponse(credential=None, error="invalid_dpop_proof", error_description=reason)
+
+        # Step 2b: DPoP validation (if dpop_proof present)
         dpop_result = None
         if request.dpop_proof is not None:
             if self._dpop_validator is None:
                 reason = "DPoP proof provided but dpop_validator port not wired"
-                self._emit_deny(principal.user_id, principal_kind, reason, request.tool_request)
+                self._emit(AuditEventType.DPOP_INVALID, principal.user_id, principal_kind, reason, request.tool_request)
                 return CredentialResponse(credential=None, error="invalid_request", error_description=reason)
             dpop_result = self._dpop_validator.validate_proof(
                 request.dpop_proof,
@@ -216,23 +235,33 @@ class ACPOrchestrator:
                 access_token_hash=request.access_token_hash,
             )
             if not dpop_result.valid:
-                reason = f"dpop_invalid: {dpop_result.error_description}"
-                self._emit_deny(principal.user_id, principal_kind, reason, request.tool_request)
-                return CredentialResponse(credential=None, error="invalid_dpop_proof", error_description=dpop_result.error_description)
+                self._emit(
+                    AuditEventType.DPOP_INVALID,
+                    principal.user_id, principal_kind,
+                    dpop_result.error_description,
+                    request.tool_request,
+                )
+                return CredentialResponse(
+                    credential=None,
+                    error="invalid_dpop_proof",
+                    error_description=dpop_result.error_description,
+                )
 
-            # Step 2b: bind DPoP agent_id to actor_token subject or subject agent
-            # (RFC 9449 §7.1: the DPoP key must belong to the proximate actor)
+            # Step 2c: bind DPoP agent_id to proximate actor (RFC 9449 §7.1)
             binding_err = self._check_dpop_binding(dpop_result.agent_id, request, principal)
             if binding_err:
-                self._emit_deny(principal.user_id, principal_kind, binding_err, request.tool_request)
+                self._emit(AuditEventType.DPOP_INVALID, principal.user_id, principal_kind, binding_err, request.tool_request)
                 return CredentialResponse(credential=None, error="invalid_dpop_proof", error_description=binding_err)
+
+            # Step 2d: emit DPOP_VALID — positive signal for SIEM
+            self._emit(AuditEventType.DPOP_VALID, principal.user_id, principal_kind, None, request.tool_request)
 
         # Step 3: token exchange — build act claim from delegation (optional port)
         act_claim = None
         if request.actor_token is not None:
             if self._token_exchange is None:
                 reason = "actor_token provided but token_exchange port not wired"
-                self._emit_deny(principal.user_id, principal_kind, reason, request.tool_request)
+                self._emit(AuditEventType.DELEGATION_REJECTED, principal.user_id, principal_kind, reason, request.tool_request)
                 return CredentialResponse(credential=None, error="invalid_request", error_description=reason)
             exchange_req = TokenExchangeRequest(
                 subject_token=request.subject_token,
@@ -245,7 +274,7 @@ class ACPOrchestrator:
             exchange_resp = self._token_exchange.exchange(exchange_req)
             if exchange_resp.error:
                 reason = f"exchange_failed: {exchange_resp.error_description}"
-                self._emit_deny(principal.user_id, principal_kind, reason, request.tool_request)
+                self._emit(AuditEventType.DELEGATION_REJECTED, principal.user_id, principal_kind, reason, request.tool_request)
                 return CredentialResponse(
                     credential=None,
                     error=exchange_resp.error,
@@ -259,7 +288,8 @@ class ACPOrchestrator:
             decision = pdp.evaluate(principal, action, resource)
             if decision.decision != Decision.ALLOW:
                 reason = decision.reason or "policy pipeline denied"
-                self._emit_deny(
+                self._emit(
+                    AuditEventType.POLICY_DENY,
                     principal.user_id, principal_kind, reason, request.tool_request,
                     act_claim=act_claim,
                 )
@@ -288,14 +318,19 @@ class ACPOrchestrator:
             credential = self._broker.vend_credential(principal, enriched_request)
         except Exception as exc:
             reason = f"broker_error: {exc}"
-            self._emit_deny(
+            self._emit(
+                AuditEventType.POLICY_DENY,
                 principal.user_id, principal_kind, reason, request.tool_request,
                 act_claim=act_claim,
             )
             return CredentialResponse(credential=None, error="server_error", error_description=str(exc))
 
-        # Step 7: emit ALLOW audit event
-        self._emit_allow(principal.user_id, principal_kind, request.tool_request, act_claim=act_claim)
+        # Step 7: emit CREDENTIAL_VENDED
+        self._emit(
+            AuditEventType.CREDENTIAL_VENDED,
+            principal.user_id, principal_kind, None, request.tool_request,
+            act_claim=act_claim,
+        )
         return CredentialResponse(credential=credential)
 
     # ------------------------------------------------------------------
@@ -368,10 +403,7 @@ class ACPOrchestrator:
             return HumanUser(user_id=sub, username=sub, role=role), None
 
     def _decode_sub(self, token: str) -> Optional[str]:
-        """
-        Extract the 'sub' claim from a JWT without building a Principal.
-        Used for DPoP binding checks against actor_token.
-        """
+        """Extract 'sub' from a JWT without building a Principal. Used for DPoP binding."""
         try:
             claims = pyjwt.decode(
                 token,
@@ -393,12 +425,10 @@ class ACPOrchestrator:
         Verify DPoP proof is bound to the proximate actor (RFC 9449 §7.1).
 
         Returns None if binding is valid, error string if invalid.
-        Binding is only enforced when dpop_agent_id is non-None (i.e., a
-        registered key was found). If dpop_agent_id is None the validator
-        returned KEY_NOT_FOUND — that error already denied the request.
+        Fails closed when actor_token sub is undecodable (Gap 1 fix).
         """
         if dpop_agent_id is None:
-            return None  # key lookup already failed upstream
+            return None  # key lookup already failed upstream; error already emitted
 
         if request.actor_token is not None:
             actor_sub = self._decode_sub(request.actor_token)
@@ -466,35 +496,19 @@ class ACPOrchestrator:
             raw_act_claim=act_claim,
         )
 
-    def _emit_allow(
+    def _emit(
         self,
+        event_type: AuditEventType,
         principal_id: str,
         principal_kind: str,
-        tool_request: ToolRequest,
-        *,
-        act_claim: Optional[dict] = None,
-    ) -> None:
-        self._audit.emit(AuditEvent(
-            event_type=AuditEventType.CREDENTIAL_VENDED,
-            principal_id=principal_id,
-            provider=tool_request.provider.value,
-            action=tool_request.action,
-            resource=tool_request.resource,
-            actor_chain=self._make_actor_chain_snapshot(principal_id, act_claim),
-            metadata={"principal_kind": principal_kind},
-        ))
-
-    def _emit_deny(
-        self,
-        principal_id: str,
-        principal_kind: str,
-        reason: str,
+        reason: Optional[str],
         tool_request: Optional[ToolRequest],
         *,
         act_claim: Optional[dict] = None,
     ) -> None:
+        """Emit a single audit event with the given type."""
         self._audit.emit(AuditEvent(
-            event_type=AuditEventType.POLICY_DENY,
+            event_type=event_type,
             principal_id=principal_id,
             provider=tool_request.provider.value if tool_request else None,
             action=tool_request.action if tool_request else None,
