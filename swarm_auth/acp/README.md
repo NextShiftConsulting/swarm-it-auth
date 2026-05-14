@@ -39,8 +39,9 @@ from swarm_auth.domain.human_user import HumanUser
 from swarm_auth.domain.roles import UserRole
 from swarm_auth.acp.orchestrator import ACPOrchestrator, DelegatedCredentialRequest
 from swarm_auth.adapters.memory_audit import MemoryAuditAdapter
+from swarm_auth.adapters.rfc8693_token_exchange import RFC8693TokenExchangeAdapter
 from swarm_auth.ports.composite_pdp import make_acp_pipeline
-from swarm_auth.ports.credential_broker_port import CredentialBrokerPort, ToolRequest
+from swarm_auth.ports.credential_broker_port import CredentialBrokerPort, ProviderType, ToolRequest
 
 SECRET = "dev-secret"  # HS256 shared key — never use in production
 
@@ -72,18 +73,21 @@ allow_pdp.evaluate.return_value = PolicyDecision(decision=Decision.ALLOW, reason
 
 orchestrator = ACPOrchestrator(
     broker=broker,
-    policy_pipeline=make_acp_pipeline(rbac=allow_pdp, scope=allow_pdp),
+    policy_pipeline=[make_acp_pipeline(rbac=allow_pdp, scope=allow_pdp)],  # wrap in list
     audit=MemoryAuditAdapter(),
     signing_key=SECRET,
     auth=auth,
+    token_exchange=RFC8693TokenExchangeAdapter(signing_key=SECRET),  # required for delegated flows
     require_dpop_for_delegation=False,  # set False for local smoke tests (no DPoP infra)
 )
 
 # 5. Make a credential request
 response = orchestrator.request_credential(DelegatedCredentialRequest(
     tool_request=ToolRequest(
-        provider="aws", service="s3", action="s3:GetObject",
-        resource_arn="arn:aws:s3:::my-bucket/key",
+        tool_name="s3_get",
+        provider=ProviderType.AWS,
+        action="s3:GetObject",
+        resource="arn:aws:s3:::my-bucket/key",
     ),
     subject_token=human_token,
 ))
@@ -91,10 +95,12 @@ print(response.credential)  # ProviderCredential from broker
 ```
 
 **Key points for local mode:**
-- Use `create_jwt_auth(secret=...)` — not `JWTAuthAdapter(...)` directly.
+- Use `create_jwt_auth(secret=...)` — not `JWTAuthAdapter(...)` directly (requires a blacklist adapter).
+- `policy_pipeline` takes a **list** of PDPs — `make_acp_pipeline()` returns a single `CompositePDP`, so wrap it: `[make_acp_pipeline(...)]`.
+- `token_exchange` must be wired (`RFC8693TokenExchangeAdapter`) for any request with `actor_token`. Without it, actor_token → `invalid_request` error regardless of `require_dpop_for_delegation`.
 - Set `require_dpop_for_delegation=False` when testing delegated flows without DPoP infrastructure.
 - `MemoryAuditAdapter` records all events; call `.recorded()` or `.get_events()` to inspect them.
-- `policy_pipeline` must not be empty — `ACPOrchestrator` raises `ValueError` at construction.
+- Empty `policy_pipeline=[]` raises `ValueError` at construction (fail-closed).
 
 ---
 
