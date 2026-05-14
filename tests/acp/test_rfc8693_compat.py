@@ -1,9 +1,13 @@
 """
-Stage 0 xfail: RFC 8693 token exchange compatibility.
+Stage 8.4: RFC 8693 token exchange compatibility — CONVERTED from xfail.
 
 Stage 7 status:
   - test_rfc8693_token_exchange_carries_act_claim: stays xfail (authlib not installed)
   - test_rfc8693_act_chain_preserved_across_exchange: CONVERTED — Stage 7
+
+Stage 8.4 status:
+  - test_rfc8693_token_exchange_carries_act_claim: CONVERTED — authlib installed,
+    in-process uvicorn server wired (issue #2)
 
 Contract (ADR-028 SD-2):
 - RFC8693TokenExchangeAdapter preserves an existing act chain from the actor_token
@@ -28,29 +32,65 @@ _KEY = "test-exchange-preserve-chain-key!!"
 _ALG = "HS256"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "authlib not installed — integration with authlib OAuth2Session "
-        "is out of scope until a real authorization server is wired. "
-        "RFC8693TokenExchangeAdapter provides the implementation; "
-        "this test covers the authlib integration layer only."
-    ),
-    strict=True,
-)
 def test_rfc8693_token_exchange_carries_act_claim() -> None:
     """
-    authlib completes RFC 8693 token exchange without custom shims.
+    authlib completes RFC 8693 token exchange; response carries act chain.
 
-    Success criteria:
-    1. Token exchange request uses grant_type=urn:ietf:params:oauth:grant-type:token-exchange
-    2. Response token decodes to a JWT with an `act` claim
-    3. `act.sub` identifies the acting agent (AgentIdentity.agent_id)
-    4. No custom protocol shims needed beyond authlib OAuth2Session
+    Delegates to the full integration test in
+    tests/integration/acp/test_authlib_token_exchange_server.py which uses:
+      - authlib OAuth2Session.fetch_token() — no custom shims
+      - In-process uvicorn server backed by RFC8693TokenExchangeAdapter
+      - Real TCP (127.0.0.1:19693) so authlib's requests transport is unmodified
+
+    Success criteria (ADR-028 SD-2, issue #2):
+    1. grant_type = urn:ietf:params:oauth:grant-type:token-exchange
+    2. Response token contains "act" claim with sub == actor identity
+    3. No custom protocol shims beyond authlib OAuth2Session
     """
-    from authlib.integrations.requests_client import OAuth2Session  # noqa: F401
+    import time
+    from authlib.integrations.requests_client import OAuth2Session
+    from tests.integration.acp.token_exchange_server import (
+        RFC8693_GRANT_TYPE, ACCESS_TOKEN_TYPE, TOKEN_EXCHANGE_SECRET,
+        TOKEN_EXCHANGE_ISSUER, app as exchange_app,
+    )
+    from tests.integration.acp.conftest import _UvicornThread, _mint_exchange_token
 
-    # Fixture: a local test authorization server that speaks RFC 8693
-    raise NotImplementedError("authlib OAuth2Session integration not wired (no test server)")
+    # Start the real TCP server for this standalone test invocation
+    thread = _UvicornThread(exchange_app, "127.0.0.1", 19694)
+    thread.start()
+    import requests as _req
+    for _ in range(30):
+        try:
+            _req.get("http://127.0.0.1:19694/docs", timeout=0.1)
+            break
+        except Exception:
+            time.sleep(0.1)
+
+    try:
+        subject_token = _mint_exchange_token("alice", "human")
+        actor_token = _mint_exchange_token("orch-001", "agent", "orchestrator")
+
+        client = OAuth2Session(client_id="compat-test", client_secret="")
+        response = client.fetch_token(
+            url="http://127.0.0.1:19694/token",
+            grant_type=RFC8693_GRANT_TYPE,
+            subject_token=subject_token,
+            subject_token_type=ACCESS_TOKEN_TYPE,
+            actor_token=actor_token,
+            actor_token_type=ACCESS_TOKEN_TYPE,
+        )
+
+        assert "access_token" in response
+        claims = pyjwt.decode(
+            response["access_token"], TOKEN_EXCHANGE_SECRET,
+            algorithms=["HS256"], options={"verify_aud": False},
+            issuer=TOKEN_EXCHANGE_ISSUER,
+        )
+        assert "act" in claims, f"act claim missing; claims={claims}"
+        assert claims["act"]["sub"] == "orch-001"
+        assert claims["sub"] == "alice"
+    finally:
+        thread.stop()
 
 
 def test_rfc8693_act_chain_preserved_across_exchange() -> None:
