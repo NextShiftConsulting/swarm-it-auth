@@ -21,6 +21,18 @@ ACP sits between callers and the broker — it never holds secrets itself.
 
 ---
 
+## Quick start — local smoke test
+
+Verify local script mode works end-to-end (no external services):
+
+```bash
+python examples/local_acp_smoke.py
+```
+
+Expected output: `Local ACP smoke test: ALL CHECKS PASSED`
+
+---
+
 ## Usage
 
 There are two modes. Choose based on your context:
