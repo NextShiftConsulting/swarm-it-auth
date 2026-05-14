@@ -25,6 +25,7 @@ from swarm_auth.ports.token_exchange_port import (
     TokenExchangeRequest,
     TokenType,
 )
+# DelegationType imported above — used in blocker-fix tests
 
 _SIGNING_KEY = "test-exchange-signing-key-32-bytes!!"
 _ALGORITHM = "HS256"
@@ -129,14 +130,90 @@ def test_exchange_act_claim_in_response_metadata(exchanger):
 
 
 # ---------------------------------------------------------------------------
-# No actor token (subject-only exchange)
+# Blocker 2 fix: DELEGATION requires actor_token
 # ---------------------------------------------------------------------------
 
-def test_exchange_no_actor_token_allowed(exchanger):
+def test_delegation_exchange_requires_actor_token(exchanger):
+    """
+    Blocker 2 fix: DELEGATION without actor_token is rejected.
+    RFC 8693 §4.1: act claim requires an actor; omitting actor_token
+    for DELEGATION is a contract violation.
+    """
     request = TokenExchangeRequest(
         subject_token=_human_token(),
         subject_token_type=TokenType.ACCESS_TOKEN,
         requested_token_type=TokenType.ACCESS_TOKEN,
+        delegation_type=DelegationType.DELEGATION,
+        # actor_token intentionally omitted
+    )
+    response = exchanger.exchange(request)
+    assert response.access_token is None
+    assert response.error == "invalid_request"
+    assert "actor_token" in response.error_description.lower()
+
+
+def test_delegation_exchange_requires_actor_token_type(exchanger):
+    """actor_token_type must be provided when actor_token is present."""
+    request = TokenExchangeRequest(
+        subject_token=_human_token(),
+        subject_token_type=TokenType.ACCESS_TOKEN,
+        requested_token_type=TokenType.ACCESS_TOKEN,
+        actor_token=_agent_token(),
+        # actor_token_type intentionally omitted
+    )
+    response = exchanger.exchange(request)
+    assert response.access_token is None
+    assert response.error == "invalid_request"
+    assert "actor_token_type" in response.error_description.lower()
+
+
+# ---------------------------------------------------------------------------
+# Blocker 3 fix: fail closed on dpop_jkt and resource until Stage 7
+# ---------------------------------------------------------------------------
+
+def test_exchange_rejects_dpop_jkt_until_bound(exchanger):
+    """dpop_jkt is rejected until Stage 7 wires DPoPValidatorPort."""
+    request = TokenExchangeRequest(
+        subject_token=_human_token(),
+        subject_token_type=TokenType.ACCESS_TOKEN,
+        requested_token_type=TokenType.ACCESS_TOKEN,
+        actor_token=_agent_token(),
+        actor_token_type=TokenType.ACCESS_TOKEN,
+        dpop_jkt="some-jwk-thumbprint",
+    )
+    response = exchanger.exchange(request)
+    assert response.access_token is None
+    assert response.error == "invalid_request"
+    assert "dpop_jkt" in response.error_description.lower()
+
+
+def test_exchange_rejects_resource_until_scope_validation_wired(exchanger):
+    """resource indicator is rejected until Stage 7 wires ScopePolicyAdapter."""
+    request = TokenExchangeRequest(
+        subject_token=_human_token(),
+        subject_token_type=TokenType.ACCESS_TOKEN,
+        requested_token_type=TokenType.ACCESS_TOKEN,
+        actor_token=_agent_token(),
+        actor_token_type=TokenType.ACCESS_TOKEN,
+        resource="arn:aws:s3:::swarm-data/",
+    )
+    response = exchanger.exchange(request)
+    assert response.access_token is None
+    assert response.error == "invalid_request"
+    assert "resource" in response.error_description.lower()
+
+
+# ---------------------------------------------------------------------------
+# Impersonation exchange (actor_token optional)
+# ---------------------------------------------------------------------------
+
+def test_exchange_impersonation_no_actor_token_allowed(exchanger):
+    """Impersonation exchange does not require actor_token (RFC 8693 §1.1)."""
+    request = TokenExchangeRequest(
+        subject_token=_human_token(),
+        subject_token_type=TokenType.ACCESS_TOKEN,
+        requested_token_type=TokenType.ACCESS_TOKEN,
+        delegation_type=DelegationType.IMPERSONATION,
     )
     response = exchanger.exchange(request)
     assert response.access_token is not None

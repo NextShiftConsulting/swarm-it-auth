@@ -126,6 +126,44 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
         On validation error, returns TokenExchangeResponse with error
         populated (does not raise).
         """
+        # Blocker B3 (Stage 6): fail closed on dpop_jkt and resource until Stage 7.
+        # dpop_jkt requires a cnf claim + token_type="DPoP" wired to DPoPValidatorPort.
+        # resource requires scope policy validation wired to ScopePolicyAdapter.
+        # Both are Stage 7 ACPOrchestrator responsibilities.
+        if request.dpop_jkt is not None:
+            return TokenExchangeResponse(
+                error="invalid_request",
+                error_description=(
+                    "DPoP-bound exchange tokens (dpop_jkt) are not supported until "
+                    "Stage 7: ACPOrchestrator wires DPoPValidatorPort to the exchange flow."
+                ),
+            )
+        if request.resource is not None:
+            return TokenExchangeResponse(
+                error="invalid_request",
+                error_description=(
+                    "resource indicator validation is not supported until "
+                    "Stage 7: ACPOrchestrator wires ScopePolicyAdapter to the exchange flow."
+                ),
+            )
+
+        # Blocker B2: DELEGATION requires actor_token (RFC 8693 §4.1).
+        # Impersonation may omit actor_token (actor_token optional per RFC 8693 §1.1).
+        if request.delegation_type == DelegationType.DELEGATION and not request.actor_token:
+            return TokenExchangeResponse(
+                error="invalid_request",
+                error_description=(
+                    "actor_token is required for DelegationType.DELEGATION. "
+                    "Provide the orchestrator's access token as actor_token."
+                ),
+            )
+
+        if request.actor_token is not None and request.actor_token_type is None:
+            return TokenExchangeResponse(
+                error="invalid_request",
+                error_description="actor_token_type is required when actor_token is provided.",
+            )
+
         # Step 1: decode subject token
         subject_claims = self._decode_token(request.subject_token)
         if subject_claims is None:
@@ -209,8 +247,7 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
         if request.audience:
             payload["aud"] = request.audience
 
-        if request.resource:
-            payload["resource"] = request.resource       # RFC 8707 §2
+        # resource and dpop_jkt are fail-closed above; no payload writes here.
 
         if request.delegation_type == DelegationType.IMPERSONATION:
             payload["may_act"] = {"sub": act_claim["sub"]} if act_claim else {}

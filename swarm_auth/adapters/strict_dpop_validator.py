@@ -212,14 +212,15 @@ class StrictDPoPValidator(DPoPValidatorPort):
                 ),
             )
 
-        # Step 3: jti replay check
+        # Step 3: jti replay check (read-only pass — commit happens after all checks)
         with self._lock:
-            if proof.jti in self._seen_jti:
-                return DPoPValidationResult(
-                    valid=False,
-                    error_code=DPoPErrorCode.REPLAY_DETECTED,
-                    error_description=f"DPoP proof jti {proof.jti!r} has already been used.",
-                )
+            already_seen = proof.jti in self._seen_jti
+        if already_seen:
+            return DPoPValidationResult(
+                valid=False,
+                error_code=DPoPErrorCode.REPLAY_DETECTED,
+                error_description=f"DPoP proof jti {proof.jti!r} has already been used.",
+            )
 
         # Step 4: iat clock skew
         age = (now - proof.iat).total_seconds()
@@ -296,14 +297,33 @@ class StrictDPoPValidator(DPoPValidatorPort):
                 ),
             )
 
-        # Step 10: signature verification (requires raw_jwt + PyJWT[crypto])
-        if proof.raw_jwt is not None:
-            sig_result = self._verify_signature(proof, agent_key)
-            if sig_result is not None:
-                return sig_result
+        # Step 10: signature verification — raw_jwt is REQUIRED (fail closed)
+        # RFC 9449 §4.2: signature verification is mandatory; a proof without
+        # a verifiable JWT is not a valid proof-of-possession.
+        if proof.raw_jwt is None:
+            return DPoPValidationResult(
+                valid=False,
+                error_code=DPoPErrorCode.INVALID_DPOP_PROOF,
+                error_description=(
+                    "raw_jwt is required for DPoP signature verification. "
+                    "DPoPProof.raw_jwt must contain the compact-serialized JWT."
+                ),
+            )
 
-        # All checks passed — record jti to prevent replay
+        sig_result = self._verify_signature(proof, agent_key)
+        if sig_result is not None:
+            return sig_result
+
+        # All checks passed — atomically record jti to prevent replay.
+        # Double-check under lock to close the TOCTOU window between the
+        # read-only check above and this write.
         with self._lock:
+            if proof.jti in self._seen_jti:
+                return DPoPValidationResult(
+                    valid=False,
+                    error_code=DPoPErrorCode.REPLAY_DETECTED,
+                    error_description=f"DPoP proof jti {proof.jti!r} has already been used.",
+                )
             self._seen_jti.add(proof.jti)
 
         return DPoPValidationResult(

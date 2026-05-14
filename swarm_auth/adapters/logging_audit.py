@@ -105,11 +105,14 @@ class LoggingAuditAdapter(AuditPort):
         if event.policy_ids:
             d["policy_ids"] = event.policy_ids
         if event.actor_chain:
-            d["actor_chain"] = {
+            chain = {
                 "subject": event.actor_chain.subject,
                 "actor": event.actor_chain.actor,
                 "chain_depth": event.actor_chain.chain_depth,
             }
+            if event.actor_chain.raw_act_claim is not None:
+                chain["raw_act_claim"] = event.actor_chain.raw_act_claim
+            d["actor_chain"] = chain
         if event.metadata:
             d["metadata"] = event.metadata
         return d
