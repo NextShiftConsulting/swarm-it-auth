@@ -106,21 +106,21 @@ class MemoryAuditAdapter(AuditPort):
           timestamp, event_type, principal_kind, subject, actor,
           resource, outcome, reason.
 
-        principal_kind is derived from the principal_id prefix convention
-        used by ACP adapters (agents carry a "principal_kind" claim in their
-        tokens; here we use metadata if present, defaulting to "human").
+        principal_kind is read from AuditEvent.metadata["principal_kind"]
+        when present (ACPOrchestrator sets this via _emit_allow/_emit_deny).
+        Falls back to "human" when metadata is absent (legacy events).
+
+        raw_act_claim is included nested under "actor_chain" when present,
+        enabling SIEM reconstruction of the full delegation path.
         """
         result = []
         for event in self.recorded():
-            # Derive principal_kind from event metadata if available
+            # principal_kind: prefer metadata (set by ACPOrchestrator), fall back to "human"
             principal_kind = "human"
             if event.metadata and "principal_kind" in event.metadata:
                 principal_kind = event.metadata["principal_kind"]
-            elif event.actor_chain is not None and event.actor_chain.actor is not None:
-                # Presence of act chain with actor implies agent delegation
-                principal_kind = "human"  # subject is still the human
 
-            # Determine subject and actor from actor_chain
+            # subject and actor from actor_chain snapshot
             if event.actor_chain is not None:
                 subject = event.actor_chain.subject
                 actor = event.actor_chain.actor
@@ -128,12 +128,12 @@ class MemoryAuditAdapter(AuditPort):
                 subject = event.principal_id
                 actor = None
 
-            # Map event_type to outcome
-            deny_types = {
+            # outcome: deny event types map to "failure"
+            _DENY_EVENT_TYPES = {
                 "authz.deny", "authz.scope_deny",
                 "delegation.rejected", "dpop.invalid",
             }
-            outcome = "failure" if event.event_type.value in deny_types else "success"
+            outcome = "failure" if event.event_type.value in _DENY_EVENT_TYPES else "success"
 
             d: Dict[str, Any] = {
                 "timestamp": event.timestamp.isoformat(),
@@ -151,5 +151,15 @@ class MemoryAuditAdapter(AuditPort):
                 d["action"] = event.action
             if event.request_id:
                 d["request_id"] = event.request_id
+            # Include full actor_chain block with raw_act_claim for SIEM reconstruction
+            if event.actor_chain is not None:
+                chain_block: Dict[str, Any] = {
+                    "subject": event.actor_chain.subject,
+                    "actor": event.actor_chain.actor,
+                    "chain_depth": event.actor_chain.chain_depth,
+                }
+                if event.actor_chain.raw_act_claim is not None:
+                    chain_block["raw_act_claim"] = event.actor_chain.raw_act_claim
+                d["actor_chain"] = chain_block
             result.append(d)
         return result
