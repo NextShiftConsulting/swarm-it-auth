@@ -402,7 +402,12 @@ class ACPOrchestrator:
 
         if request.actor_token is not None:
             actor_sub = self._decode_sub(request.actor_token)
-            if actor_sub and dpop_agent_id != actor_sub:
+            if not actor_sub:
+                return (
+                    "dpop_agent_mismatch: actor_token sub claim is missing or undecodable; "
+                    "cannot bind DPoP proof to an anonymous actor (RFC 9449 §7.1)"
+                )
+            if dpop_agent_id != actor_sub:
                 return (
                     f"dpop_agent_mismatch: DPoP proof belongs to agent {dpop_agent_id!r} "
                     f"but actor_token subject is {actor_sub!r} (RFC 9449 §7.1)"

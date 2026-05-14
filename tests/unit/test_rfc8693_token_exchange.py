@@ -266,6 +266,33 @@ def test_exchange_actor_not_orchestrator_returns_error(exchanger):
 
 
 # ---------------------------------------------------------------------------
+# Gap 1 fix: actor_token missing sub → reject (cannot build act claim)
+# ---------------------------------------------------------------------------
+
+def test_exchange_actor_token_missing_sub_returns_error(exchanger):
+    """Gap 1 fix: actor_token without 'sub' claim is rejected before act claim is built."""
+    now = int(time.time())
+    # Build an actor token with no 'sub' — technically invalid JWT but decodable
+    import jwt as _pyjwt
+    no_sub_actor = _pyjwt.encode(
+        {"principal_kind": "agent", "agent_type": "orchestrator",
+         "iat": now, "exp": now + 3600},
+        _SIGNING_KEY, algorithm="HS256",
+    )
+    request = TokenExchangeRequest(
+        subject_token=_human_token(),
+        subject_token_type=TokenType.ACCESS_TOKEN,
+        requested_token_type=TokenType.ACCESS_TOKEN,
+        actor_token=no_sub_actor,
+        actor_token_type=TokenType.ACCESS_TOKEN,
+    )
+    response = exchanger.exchange(request)
+    assert response.access_token is None
+    assert response.error == "invalid_request"
+    assert "sub" in response.error_description.lower()
+
+
+# ---------------------------------------------------------------------------
 # Chain depth limit (RFC 8693 §8)
 # ---------------------------------------------------------------------------
 

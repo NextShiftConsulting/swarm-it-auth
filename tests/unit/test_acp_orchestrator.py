@@ -395,6 +395,39 @@ def test_dpop_binding_mismatch_actor_denied(audit, token_exchange):
     broker.vend_credential.assert_not_called()
 
 
+def test_dpop_binding_fails_closed_when_actor_sub_undecodable(audit):
+    """Gap 1 fix: if actor_token.sub cannot be decoded, binding fails closed."""
+    broker = _allow_broker()
+    orchestrator = ACPOrchestrator(
+        broker=broker,
+        policy_pipeline=[_allow_pdp()],
+        audit=audit,
+        signing_key=_KEY,
+        # No token_exchange: actor_token+DPoP check happens before exchange step
+        dpop_validator=_dpop_validator_returning("orch-001"),
+    )
+    # Craft actor_token signed with a different key — _decode_sub returns None
+    wrong_key = "totally-different-key-that-is-long-enough!!"
+    now = int(time.time())
+    bad_actor_token = pyjwt.encode(
+        {"sub": "orch-001", "principal_kind": "agent", "agent_type": "orchestrator",
+         "iat": now, "exp": now + 3600},
+        wrong_key, algorithm=_ALG,
+    )
+    response = orchestrator.request_credential(DelegatedCredentialRequest(
+        tool_request=_tool_request(),
+        subject_token=_human_token("alice"),
+        actor_token=bad_actor_token,
+        dpop_proof=_dpop_proof_stub(),
+        expected_htm="POST",
+        expected_htu="https://example.com",
+    ))
+    assert response.credential is None
+    assert response.error == "invalid_dpop_proof"
+    assert "actor_token" in response.error_description.lower()
+    broker.vend_credential.assert_not_called()
+
+
 def test_dpop_binding_matches_subject_agent_allowed(audit):
     """Subject is AgentIdentity + DPoP agent_id == subject.user_id → allowed."""
     broker = _allow_broker()

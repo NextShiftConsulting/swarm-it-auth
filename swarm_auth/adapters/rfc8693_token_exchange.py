@@ -222,7 +222,12 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
                 )
 
             # Build RFC 8693 §4.1 act claim
-            actor_sub = actor_claims.get("sub", "")
+            actor_sub = actor_claims.get("sub")
+            if not actor_sub:
+                return TokenExchangeResponse(
+                    error="invalid_request",
+                    error_description="actor_token missing 'sub' claim; cannot build act claim.",
+                )
             act_claim = {"sub": actor_sub}
             # Carry forward any existing act chain from the actor token
             if "act" in actor_claims:
