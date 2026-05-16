@@ -423,3 +423,19 @@ def get_credential(key: str, default: Optional[str] = None) -> Optional[str]:
 def has_credential(key: str) -> bool:
     """Check if credential exists using default AccessScript."""
     return get_credential(key) is not None
+
+
+def get_aws_credentials() -> dict:
+    """Get AWS credentials dict for boto3.
+
+    Returns dict suitable for boto3 client initialization:
+        client = boto3.client('s3', **get_aws_credentials())
+
+    Returns:
+        Dict with aws_access_key_id, aws_secret_access_key, region_name
+    """
+    return {
+        'aws_access_key_id': get_credential('AWS_ACCESS_KEY_ID'),
+        'aws_secret_access_key': get_credential('AWS_SECRET_ACCESS_KEY'),
+        'region_name': get_credential('AWS_REGION', 'us-east-1'),
+    }

@@ -48,10 +48,8 @@ from swarm_auth.access_script import (
     OnForbidden,
     get_credential,
     has_credential,
+    get_aws_credentials,
 )
-
-# Legacy credential helpers (still useful)
-from swarm_auth.credentials import get_aws_credentials
 
 # Auth client and domain objects
 from swarm_auth.sdk.client import AuthClient
