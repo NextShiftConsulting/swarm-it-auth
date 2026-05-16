@@ -288,6 +288,16 @@ access = AccessScript.from_config({
 })
 ```
 
+## Development Setup
+
+After cloning, run once to install git hooks:
+
+```bash
+./install-hooks.sh
+```
+
+This sets `core.hooksPath=hooks` so the pre-push hook runs unit tests before every push.
+
 ## Testing
 
 ```bash

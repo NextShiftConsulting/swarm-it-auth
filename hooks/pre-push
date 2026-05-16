@@ -1,0 +1,18 @@
+#!/bin/bash
+#
+# Pre-push hook: run unit tests before push lands on remote.
+# Blocks push if any test fails.
+#
+
+echo "Running unit tests before push..."
+
+python -m pytest tests/unit/ --tb=short -q
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "PUSH BLOCKED: unit tests failed. Fix tests before pushing."
+    exit 1
+fi
+
+echo "All tests passed."
+exit 0
