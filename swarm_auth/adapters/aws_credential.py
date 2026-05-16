@@ -36,6 +36,16 @@ class AWSSecretsAdapter(CredentialPort):
         self._prefix = prefix
         self._client = boto3.client("secretsmanager", region_name=region_name)
 
+    @classmethod
+    def is_available(cls) -> bool:
+        """Check if AWS credentials are available."""
+        try:
+            import boto3
+            boto3.client("sts").get_caller_identity()
+            return True
+        except Exception:
+            return False
+
     def _get_secret_id(self, key: str) -> str:
         """Get full secret ID for a key."""
         return f"{self._prefix}{key}"

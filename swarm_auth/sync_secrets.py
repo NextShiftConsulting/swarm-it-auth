@@ -102,9 +102,8 @@ def plan_sync(
         all_keys = [k for k in all_keys if k in wanted]
 
     if client is None:
-        import boto3
-
-        client = boto3.client("secretsmanager")
+        from swarm_auth.adapters.aws_credential import AWSSecretsAdapter
+        client = AWSSecretsAdapter()._client
 
     actions: List[SyncAction] = []
     for key in sorted(all_keys):
@@ -138,9 +137,8 @@ def apply_sync(
     adapter = KeyfileAdapter(keys_dir=keys_dir)
 
     if client is None:
-        import boto3
-
-        client = boto3.client("secretsmanager")
+        from swarm_auth.adapters.aws_credential import AWSSecretsAdapter
+        client = AWSSecretsAdapter()._client
 
     executed: List[SyncAction] = []
     for act in actions:

@@ -178,13 +178,9 @@ class AccessScript:
 
             elif source == SourceType.AWS_SECRETS:
                 from swarm_auth.adapters.aws_credential import AWSSecretsAdapter
-                # Only create if AWS credentials are available
-                try:
-                    import boto3
-                    boto3.client("sts").get_caller_identity()
+                if AWSSecretsAdapter.is_available():
                     return AWSSecretsAdapter()
-                except Exception:
-                    return None
+                return None
 
             elif source == SourceType.KMS:
                 from swarm_auth.adapters.kms_credential import KMSAdapter
