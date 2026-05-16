@@ -47,32 +47,32 @@ def test_rfc8693_token_exchange_carries_act_claim() -> None:
     2. Response token contains "act" claim with sub == actor identity
     3. No custom protocol shims beyond authlib OAuth2Session
     """
-    import time
     from authlib.integrations.requests_client import OAuth2Session
+    from tests.integration.acp.helpers import UvicornThread, find_free_port, mint_exchange_token
     from tests.integration.acp.token_exchange_server import (
         RFC8693_GRANT_TYPE, ACCESS_TOKEN_TYPE, TOKEN_EXCHANGE_SECRET,
         TOKEN_EXCHANGE_ISSUER, app as exchange_app,
     )
-    from tests.integration.acp.conftest import _UvicornThread, _mint_exchange_token
 
-    # Start the real TCP server for this standalone test invocation
-    thread = _UvicornThread(exchange_app, "127.0.0.1", 19694)
+    # Start the real TCP server on an OS-assigned ephemeral port
+    host = "127.0.0.1"
+    port = find_free_port(host)
+    thread = UvicornThread(exchange_app, host, port)
     thread.start()
-    import requests as _req
-    for _ in range(30):
-        try:
-            _req.get("http://127.0.0.1:19694/docs", timeout=0.1)
-            break
-        except Exception:
-            time.sleep(0.1)
+    thread.wait_ready()
 
     try:
-        subject_token = _mint_exchange_token("alice", "human")
-        actor_token = _mint_exchange_token("orch-001", "agent", "orchestrator")
+        subject_token = mint_exchange_token(
+            "alice", "human", secret=TOKEN_EXCHANGE_SECRET, issuer=TOKEN_EXCHANGE_ISSUER,
+        )
+        actor_token = mint_exchange_token(
+            "orch-001", "agent", agent_type="orchestrator",
+            secret=TOKEN_EXCHANGE_SECRET, issuer=TOKEN_EXCHANGE_ISSUER,
+        )
 
         client = OAuth2Session(client_id="compat-test", client_secret="")
         response = client.fetch_token(
-            url="http://127.0.0.1:19694/token",
+            url=f"http://{host}:{port}/token",
             grant_type=RFC8693_GRANT_TYPE,
             subject_token=subject_token,
             subject_token_type=ACCESS_TOKEN_TYPE,

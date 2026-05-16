@@ -17,15 +17,14 @@ Provides:
 
 from __future__ import annotations
 
-import threading
 import time
 from typing import Generator, Optional
 
 import jwt as pyjwt
 import pytest
-import uvicorn
 from starlette.testclient import TestClient
 
+from tests.integration.acp.helpers import UvicornThread, find_free_port, mint_exchange_token
 from tests.integration.acp.mcp_test_server import (
     ALG,
     ISSUER,
@@ -64,33 +63,6 @@ def _mint_mcp_token(
     if aud is not None:
         payload["aud"] = aud
     return pyjwt.encode(payload, SECRET, algorithm=ALG)
-
-
-# ---------------------------------------------------------------------------
-# RFC 8693 / authlib token helpers
-# ---------------------------------------------------------------------------
-
-def _mint_exchange_token(
-    sub: str,
-    principal_kind: str = "human",
-    agent_type: Optional[str] = None,
-    act: Optional[dict] = None,
-    ttl: int = 3600,
-) -> str:
-    """Mint a JWT for token exchange tests (signed with TOKEN_EXCHANGE_SECRET)."""
-    now = int(time.time())
-    payload: dict = {
-        "sub": sub,
-        "iss": TOKEN_EXCHANGE_ISSUER,
-        "iat": now,
-        "exp": now + ttl,
-        "principal_kind": principal_kind,
-    }
-    if agent_type:
-        payload["agent_type"] = agent_type
-    if act:
-        payload["act"] = act
-    return pyjwt.encode(payload, TOKEN_EXCHANGE_SECRET, algorithm="HS256")
 
 
 # ---------------------------------------------------------------------------
@@ -134,60 +106,43 @@ def acp_token_expired() -> str:
 # RFC 8693 / authlib fixtures — real TCP server via uvicorn
 # ---------------------------------------------------------------------------
 
-class _UvicornThread(threading.Thread):
-    """Run uvicorn in a background thread; signal shutdown via should_exit."""
-
-    def __init__(self, app, host: str, port: int) -> None:
-        super().__init__(daemon=True)
-        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
-        self.server = uvicorn.Server(config)
-
-    def run(self) -> None:
-        self.server.run()
-
-    def stop(self) -> None:
-        self.server.should_exit = True
-        self.join(timeout=5)
-
-
 @pytest.fixture(scope="module")
 def token_exchange_server_url() -> Generator[str, None, None]:
     """
-    Start the RFC 8693 token exchange server on a real TCP port.
+    Start the RFC 8693 token exchange server on an OS-assigned ephemeral port.
 
     authlib's OAuth2Session uses requests under the hood — it requires a real
     HTTP server. We start uvicorn in a background thread and yield the base URL.
     Server is stopped after the module's tests complete.
     """
-    host, port = "127.0.0.1", 19693  # port chosen to avoid common conflicts
-    thread = _UvicornThread(exchange_app, host=host, port=port)
+    host = "127.0.0.1"
+    port = find_free_port(host)
+    thread = UvicornThread(exchange_app, host=host, port=port)
     thread.start()
+    thread.wait_ready()
 
-    # Wait for server to be ready (up to 3 seconds)
-    url = f"http://{host}:{port}"
-    import requests as _requests
-    for _ in range(30):
-        try:
-            _requests.get(f"{url}/docs", timeout=0.1)
-            break
-        except Exception:
-            time.sleep(0.1)
-
-    yield url
+    yield f"http://{host}:{port}"
     thread.stop()
 
 
 @pytest.fixture
 def human_subject_token() -> str:
     """HS256 JWT for human subject 'alice' (signed with TOKEN_EXCHANGE_SECRET)."""
-    return _mint_exchange_token(sub="alice", principal_kind="human")
+    return mint_exchange_token(
+        sub="alice",
+        principal_kind="human",
+        secret=TOKEN_EXCHANGE_SECRET,
+        issuer=TOKEN_EXCHANGE_ISSUER,
+    )
 
 
 @pytest.fixture
 def agent_actor_token() -> str:
     """HS256 JWT for agent actor 'orch-001' (no prior act chain)."""
-    return _mint_exchange_token(
+    return mint_exchange_token(
         sub="orch-001",
         principal_kind="agent",
         agent_type="orchestrator",
+        secret=TOKEN_EXCHANGE_SECRET,
+        issuer=TOKEN_EXCHANGE_ISSUER,
     )

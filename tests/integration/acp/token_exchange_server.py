@@ -81,6 +81,13 @@ def token_endpoint(
                     "error_description": f"expected {RFC8693_GRANT_TYPE}"},
         )
 
+    if subject_token_type != ACCESS_TOKEN_TYPE:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_request",
+                    "error_description": f"unsupported subject_token_type: {subject_token_type!r}"},
+        )
+
     req = TokenExchangeRequest(
         subject_token=subject_token,
         subject_token_type=TokenType.ACCESS_TOKEN,

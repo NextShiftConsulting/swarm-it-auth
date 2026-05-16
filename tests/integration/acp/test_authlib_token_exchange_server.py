@@ -160,3 +160,32 @@ def test_rfc8693_nested_act_chain_preserved(
     assert claims["act"]["sub"] == "orch-B"
     assert "act" in claims["act"], "prior delegation hop (orch-A) was lost"
     assert claims["act"]["act"]["sub"] == "orch-A"
+
+
+# ---------------------------------------------------------------------------
+# Invalid subject_token_type (P-002)
+# ---------------------------------------------------------------------------
+
+def test_rfc8693_rejects_unknown_subject_token_type(
+    token_exchange_server_url, human_subject_token
+):
+    """
+    Server rejects subject_token_type values other than ACCESS_TOKEN_TYPE.
+
+    RFC 8693 §2.1 requires the server to validate token type URNs and return
+    invalid_request for unrecognised values.
+    """
+    import requests
+
+    response = requests.post(
+        f"{token_exchange_server_url}/token",
+        data={
+            "grant_type": RFC8693_GRANT_TYPE,
+            "subject_token": human_subject_token,
+            "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",  # wrong type
+        },
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["detail"]["error"] == "invalid_request"
+    assert "subject_token_type" in body["detail"]["error_description"]
