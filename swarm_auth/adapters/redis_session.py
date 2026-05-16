@@ -5,7 +5,7 @@ Redis Session Adapter - Redis-backed session storage.
 from typing import Optional, List, Dict, Any
 import json
 from swarm_auth.ports.session_port import SessionPort
-from swarm_auth.domain.session import Session, SessionStatus
+from swarm_auth.domain.session import Session
 
 
 class RedisSessionAdapter(SessionPort):

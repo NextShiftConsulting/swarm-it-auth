@@ -27,8 +27,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List
 
 from swarm_auth.ports.credential_port import CredentialPort
 

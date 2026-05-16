@@ -6,7 +6,7 @@ Session policies further restrict permissions per request.
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 from swarm_auth.ports.credential_broker_port import (
     CredentialBrokerPort,

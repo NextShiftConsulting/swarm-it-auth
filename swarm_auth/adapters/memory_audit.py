@@ -17,7 +17,6 @@ Usage (tests):
     assert any(e.event_type == AuditEventType.CREDENTIAL_VENDED for e in events)
 """
 
-import json
 import threading
 from typing import Any, Dict, List
 

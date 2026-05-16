@@ -60,14 +60,12 @@ Usage:
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import jwt as pyjwt
 
 from swarm_auth.ports.token_exchange_port import (
     DelegationType,
-    TokenExchangeError,
     TokenExchangePort,
     TokenExchangeRequest,
     TokenExchangeResponse,

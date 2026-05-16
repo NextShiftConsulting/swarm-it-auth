@@ -17,12 +17,11 @@ import hashlib
 import json
 import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from swarm_auth.ports.agent_key_store_port import (
     AgentKey,
     AgentKeyStorePort,
-    KeyAlgorithm,
     KeyRegistrationRequest,
     KeyStatus,
 )

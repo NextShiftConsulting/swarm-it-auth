@@ -3,7 +3,7 @@ DynamoDB Session Adapter - AWS-native session storage.
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 from swarm_auth.ports.session_port import SessionPort
 from swarm_auth.domain.session import Session, SessionStatus

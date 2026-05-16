@@ -9,7 +9,7 @@ Uses HashiCorp Vault to vend short-lived credentials:
 One broker to rule them all.
 """
 
-from typing import Dict, Any, Optional
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 from swarm_auth.ports.credential_broker_port import (
     CredentialBrokerPort,

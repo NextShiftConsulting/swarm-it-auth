@@ -40,7 +40,7 @@ class KMSAdapter(CredentialPort):
             encrypted_credentials_env: Env var containing encrypted creds
         """
         try:
-            import boto3
+            import boto3  # noqa: F401
         except ImportError:
             raise ImportError("boto3 package required: pip install boto3")
 

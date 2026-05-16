@@ -3,9 +3,8 @@ Memory Session Adapter - In-memory session storage (testing only).
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 from swarm_auth.ports.session_port import SessionPort
-from swarm_auth.domain.session import Session, SessionStatus
+from swarm_auth.domain.session import Session
 
 
 class MemorySessionAdapter(SessionPort):

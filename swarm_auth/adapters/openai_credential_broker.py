@@ -5,7 +5,7 @@ Uses OpenAI Projects API to manage scoped keys per environment/team.
 Never vends personal API keys.
 """
 
-from typing import Dict, Any, Optional
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 from swarm_auth.ports.credential_broker_port import (
     CredentialBrokerPort,

@@ -4,7 +4,6 @@ DotEnv Credential Adapter - Load credentials from .env files.
 Auto-discovers and loads .env files without manual sourcing.
 """
 
-import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 from swarm_auth.ports.credential_port import CredentialPort

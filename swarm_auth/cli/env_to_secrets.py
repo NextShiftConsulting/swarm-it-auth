@@ -41,10 +41,10 @@ def migrate_to_secrets(
     adapter = AWSSecretsAdapter(region_name=region, prefix=prefix)
 
     try:
-        cred = adapter.store(
+        adapter.store(
             key=secret_name,
             value=value,
-            metadata={"description": f"Migrated from env var"},
+            metadata={"description": "Migrated from env var"},
         )
         print(f"[OK] Secret '{prefix}{secret_name}' created/updated in {region}")
         return True

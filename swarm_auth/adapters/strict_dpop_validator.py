@@ -27,7 +27,6 @@ via the key_lookup callable injected at construction.
 import base64
 import hashlib
 import json
-import os
 import secrets
 import threading
 from datetime import datetime, timezone, timedelta
