@@ -173,7 +173,7 @@ Request mission-scoped credentials for a specific task.
     "openai_chat": {
       "provider": "openai",
       "type": "api_key",
-      "api_key": "sk-proj-...",
+      "api_key": "<YOUR_OPENAI_KEY>",
       "project_id": "proj_123",
       "expires_at": "2026-03-31T12:30:00Z"
     }

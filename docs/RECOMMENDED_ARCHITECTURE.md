@@ -286,11 +286,11 @@ EOF
 ### OpenAI/HF Keys (Static with Rotation)
 ```bash
 vault kv put secret/openai/project-123 \
-    api_key="sk-..." \
+    api_key="<YOUR_OPENAI_KEY>" \
     project_id="proj-123"
 
 vault kv put secret/huggingface/prod \
-    token="hf_..."
+    token="<YOUR_HF_TOKEN>"
 ```
 
 ---

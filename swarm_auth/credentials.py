@@ -56,17 +56,20 @@ def get_aws_credentials() -> dict:
     """
     Get AWS credentials dict for boto3.
 
-    Returns dict suitable for boto3 client initialization:
-        client = boto3.client('s3', **get_aws_credentials())
+    Returns dict suitable for boto3 client kwargs:
+        client = boto3.client('s3', region_name='us-east-1', **get_aws_credentials())
 
     Returns:
-        Dict with aws_access_key_id, aws_secret_access_key, region_name
+        Dict with explicit keys if found, otherwise empty dict.
     """
-    return {
-        'aws_access_key_id': get_credential('AWS_ACCESS_KEY_ID'),
-        'aws_secret_access_key': get_credential('AWS_SECRET_ACCESS_KEY'),
-        'region_name': get_credential('AWS_REGION', 'us-east-1'),
-    }
+    access_key = get_credential('AWS_ACCESS_KEY_ID')
+    secret_key = get_credential('AWS_SECRET_ACCESS_KEY')
+    if access_key and secret_key:
+        return {
+            'aws_access_key_id': access_key,
+            'aws_secret_access_key': secret_key,
+        }
+    return {}
 
 
 def has_credential(key: str) -> bool:

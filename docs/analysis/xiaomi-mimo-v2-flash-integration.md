@@ -107,7 +107,7 @@ https://mimo.xiaomi.com/
 ```bash
 # In project dashboard:
 1. Click "Generate API Key"
-2. Copy API key (format: mimo_xxxxxxxxxxxxxxxx)
+2. Copy API key (format: <YOUR_MIMO_KEY>)
 3. Save to secure location (password manager)
 4. Set rate limits (if available)
 ```
@@ -117,7 +117,7 @@ https://mimo.xiaomi.com/
 ```bash
 # Test API access
 curl -X POST https://api.xiaomimimo.com/v1/chat/completions \
-  -H "Authorization: Bearer mimo_xxxxxxxxxxxxxxxx" \
+  -H "Authorization: Bearer <YOUR_MIMO_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "mimo-v2-flash",
@@ -165,7 +165,7 @@ from swarm_auth.adapters import EnvCredentialAdapter
 creds = EnvCredentialAdapter(prefix="SWARM_")
 
 # Store MiMo credentials (one-time setup)
-creds.store("MIMO_API_KEY", "mimo_xxxxxxxxxxxxxxxx", metadata={
+creds.store("MIMO_API_KEY", "<YOUR_MIMO_KEY>", metadata={
     "description": "Xiaomi MiMo-V2-Flash API key",
     "provider": "xiaomi",
     "rotation_policy": "90d",
@@ -187,7 +187,7 @@ Set credentials via environment variables:
 
 ```bash
 # .env or export
-export SWARM_MIMO_API_KEY=mimo_xxxxxxxxxxxxxxxx
+export SWARM_MIMO_API_KEY=<YOUR_MIMO_KEY>
 export SWARM_MIMO_ENDPOINT=https://api.xiaomimimo.com/v1
 export SWARM_MIMO_MODEL=mimo-v2-flash
 ```
@@ -407,7 +407,7 @@ class PodcastMIMOAgent:
 
 ```bash
 # Set MiMo credentials
-export SWARM_MIMO_API_KEY=mimo_xxxxxxxxxxxxxxxx
+export SWARM_MIMO_API_KEY=<YOUR_MIMO_KEY>
 export SWARM_MIMO_ENDPOINT=https://api.xiaomimimo.com/v1
 export SWARM_MIMO_MODEL=mimo-v2-flash
 
@@ -434,7 +434,7 @@ python batch_regenerate_podcasts.py \
 
 **Headers**:
 ```
-Authorization: Bearer mimo_xxxxxxxxxxxxxxxx
+Authorization: Bearer <YOUR_MIMO_KEY>
 Content-Type: application/json
 ```
 
@@ -579,13 +579,13 @@ class MiMoClientWithTracking(MiMoClient):
 # Rotate MiMo API key every 90 days
 # 1. Generate new key in MiMo dashboard
 # 2. Update environment variable
-export SWARM_MIMO_API_KEY=mimo_NEW_KEY_xxxxxxxx
+export SWARM_MIMO_API_KEY=<NEW_MIMO_KEY>
 
 # 3. Update credential store
 python -c "
 from swarm_auth.adapters import EnvCredentialAdapter
 creds = EnvCredentialAdapter(prefix='SWARM_')
-creds.rotate('MIMO_API_KEY', 'mimo_NEW_KEY_xxxxxxxx')
+creds.rotate('MIMO_API_KEY', '<NEW_MIMO_KEY>')
 "
 
 # 4. Delete old key from MiMo dashboard
