@@ -48,9 +48,10 @@ from typing import List, Optional
 
 try:
     import yaml
-    _HAS_YAML = True
 except ImportError:
-    _HAS_YAML = False
+    raise ImportError(
+        "ScopePolicyAdapter requires PyYAML. Install with: pip install pyyaml"
+    )
 
 from swarm_auth.domain.principal import Principal
 from swarm_auth.domain.agent_identity import AgentIdentity
@@ -125,11 +126,6 @@ class ScopePolicyAdapter(PolicyDecisionPoint):
         self._constraints: List[ScopeConstraint] = self._load(path)
 
     def _load(self, path: Path) -> List[ScopeConstraint]:
-        if not _HAS_YAML:
-            # PyYAML not installed — return empty list (no constraints = default-allow).
-            # Stage 5 TODO: make yaml a hard dependency once AuditPort is wired.
-            return []
-
         if not path.exists():
             return []
 
