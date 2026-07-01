@@ -19,7 +19,15 @@ from swarm_auth.ports.policy_port import Action, Resource, PolicyContext, Decisi
 from swarm_auth.ports.credential_broker_port import ToolRequest, ProviderType
 
 
-EXAMPLE_SECRET = "example-agent-secret-not-for-production!!"  # noqa: S105 — demo only
+def _get_example_secret() -> str:
+    """Get JWT secret from env. NEVER copy this pattern into production code."""
+    secret = os.environ.get("EXAMPLE_JWT_SECRET")
+    if not secret:
+        raise SystemExit(
+            "Set EXAMPLE_JWT_SECRET env var before running this demo.\n"
+            "  export EXAMPLE_JWT_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')"
+        )
+    return secret
 
 
 def main():
@@ -29,7 +37,7 @@ def main():
 
     # 1. INBOUND AUTH: Authenticate the agent
     print("\n1. Authenticating agent...")
-    auth = create_jwt_auth(secret=EXAMPLE_SECRET)
+    auth = create_jwt_auth(secret=_get_example_secret())
 
     agent = User(
         user_id="agent_123",

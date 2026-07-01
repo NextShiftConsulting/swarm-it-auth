@@ -72,7 +72,7 @@ from swarm_auth.ports.token_exchange_port import (
     TokenType,
 )
 
-_ALGORITHM = "HS256"
+_DEFAULT_ALGORITHM = "HS256"
 _DEFAULT_TTL_SECONDS = 3600  # 1 hour
 
 
@@ -91,9 +91,12 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
     RFC 8693 token exchange: validates delegation and issues act-claim JWT.
 
     Args:
-        signing_key:          HS256 signing signing_key (same as JWTAuthAdapter signing_key).
-        token_ttl:       Lifetime of issued tokens in seconds (default 3600).
-        issuer:          "iss" claim in issued tokens (default "swarm-it-auth").
+        signing_key:      Signing key — HS256 shared secret or RS256 private PEM.
+        token_ttl:        Lifetime of issued tokens in seconds (default 3600).
+        issuer:           "iss" claim in issued tokens (default "swarm-it-auth").
+        algorithm:        JWT algorithm (default HS256, use RS256 for asymmetric).
+        verification_key: Public PEM for verifying inbound tokens (RS256).
+                          Defaults to signing_key (correct for HS256).
     """
 
     def __init__(
@@ -101,10 +104,14 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
         signing_key: str,
         token_ttl: int = _DEFAULT_TTL_SECONDS,
         issuer: str = "swarm-it-auth",
+        algorithm: str = _DEFAULT_ALGORITHM,
+        verification_key: Optional[str] = None,
     ) -> None:
         self._signing_key = signing_key
+        self._verification_key = verification_key or signing_key
         self._token_ttl = token_ttl
         self._issuer = issuer
+        self._algorithm = algorithm
 
     # ------------------------------------------------------------------
     # TokenExchangePort interface
@@ -255,7 +262,7 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
         if request.delegation_type == DelegationType.IMPERSONATION:
             payload["may_act"] = {"sub": act_claim["sub"]} if act_claim else {}
 
-        access_token = pyjwt.encode(payload, self._signing_key, algorithm=_ALGORITHM)
+        access_token = pyjwt.encode(payload, self._signing_key, algorithm=self._algorithm)
 
         return TokenExchangeResponse(
             access_token=access_token,
@@ -289,15 +296,15 @@ class RFC8693TokenExchangeAdapter(TokenExchangePort):
 
     def _decode_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
-        Decode an HS256 JWT. Returns claims dict or None on failure.
+        Decode a JWT. Returns claims dict or None on failure.
 
         Verifies signature and expiry. Does not raise.
         """
         try:
             return pyjwt.decode(
                 token,
-                self._signing_key,
-                algorithms=[_ALGORITHM],
+                self._verification_key,
+                algorithms=[self._algorithm],
                 options={"verify_aud": False},
             )
         except pyjwt.ExpiredSignatureError:

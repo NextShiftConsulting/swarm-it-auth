@@ -93,7 +93,7 @@ from swarm_auth.ports.token_exchange_port import (
     TokenType,
 )
 
-_ALGORITHM = "HS256"
+_DEFAULT_ALGORITHM = "HS256"
 _KNOWN_PRINCIPAL_KINDS = frozenset({"human", "agent"})
 
 
@@ -178,6 +178,8 @@ class ACPOrchestrator:
         dpop_validator: Optional[DPoPValidatorPort] = None,
         auth: Optional[AuthenticationPort] = None,
         require_dpop_for_delegation: bool = True,
+        algorithm: str = _DEFAULT_ALGORITHM,
+        verification_key: Optional[str] = None,
     ) -> None:
         if not policy_pipeline:
             raise ValueError(
@@ -188,6 +190,8 @@ class ACPOrchestrator:
         self._policy_pipeline = list(policy_pipeline)
         self._audit = audit
         self._signing_key = signing_key
+        self._verification_key = verification_key or signing_key
+        self._algorithm = algorithm
         self._token_exchange = token_exchange
         self._dpop_validator = dpop_validator
         self._auth = auth
@@ -362,8 +366,8 @@ class ACPOrchestrator:
         try:
             claims = pyjwt.decode(
                 token,
-                self._signing_key,
-                algorithms=[_ALGORITHM],
+                self._verification_key,
+                algorithms=[self._algorithm],
                 options={"verify_aud": False},
             )
         except pyjwt.ExpiredSignatureError:
@@ -412,8 +416,8 @@ class ACPOrchestrator:
         try:
             claims = pyjwt.decode(
                 token,
-                self._signing_key,
-                algorithms=[_ALGORITHM],
+                self._verification_key,
+                algorithms=[self._algorithm],
                 options={"verify_aud": False},
             )
             return claims.get("sub")

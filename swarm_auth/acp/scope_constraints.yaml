@@ -60,7 +60,8 @@ constraints:
     action_pattern: "chat.*"
     allowed_resources:
       - "project-*"
-      - "*"
+      - "proj-*"
+      - "org-*"
     agent_types: null
     expires_at: null
     read_only: false
@@ -70,7 +71,8 @@ constraints:
     action_pattern: "embeddings.*"
     allowed_resources:
       - "project-*"
-      - "*"
+      - "proj-*"
+      - "org-*"
     agent_types: null
     expires_at: null
     read_only: false
@@ -80,7 +82,9 @@ constraints:
     provider: "anthropic"
     action_pattern: "messages.*"
     allowed_resources:
-      - "*"
+      - "org-*"
+      - "proj-*"
+      - "workspace-*"
     agent_types: null
     expires_at: null
     read_only: false
@@ -100,7 +104,9 @@ constraints:
     provider: "huggingface"
     action_pattern: "inference"
     allowed_resources:
-      - "*"
+      - "model-*"
+      - "space-*"
+      - "dataset-*"
     agent_types: null
     expires_at: null
     read_only: false

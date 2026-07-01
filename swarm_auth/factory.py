@@ -96,21 +96,27 @@ def create_session_store(
 
 
 def create_jwt_auth(
-    secret: str,
+    secret: Optional[str] = None,
     algorithm: str = "HS256",
     issuer: str = "swarm-it",
     blacklist: Literal["memory", "redis"] = "memory",
     redis_url: Optional[str] = None,
+    signing_key: Optional[str] = None,
+    verification_key: Optional[str] = None,
+    kid: Optional[str] = None,
 ) -> AuthenticationPort:
     """
     Create a JWT authentication adapter with blacklist.
 
     Args:
-        secret: JWT signing secret
-        algorithm: JWT algorithm (default HS256)
+        secret: JWT signing secret (required for HS256)
+        algorithm: JWT algorithm (default HS256, use RS256 for asymmetric)
         issuer: Token issuer claim
         blacklist: Blacklist backend ("memory" or "redis")
         redis_url: Redis URL (required if blacklist="redis")
+        signing_key: Private PEM for signing (RS256). None = verifier-only.
+        verification_key: Public PEM for verification (RS256). Required for RS256.
+        kid: Key ID for JWT headers. Enables key rotation.
 
     Returns:
         AuthenticationPort implementation (JWTAuthAdapter)
@@ -123,11 +129,14 @@ def create_jwt_auth(
         algorithm=algorithm,
         issuer=issuer,
         blacklist_adapter=blacklist_adapter,
+        signing_key=signing_key,
+        verification_key=verification_key,
+        kid=kid,
     )
 
 
 def create_auth_client(
-    secret: str,
+    secret: Optional[str] = None,
     algorithm: str = "HS256",
     issuer: str = "swarm-it",
     blacklist: Literal["memory", "redis"] = "memory",
@@ -135,19 +144,25 @@ def create_auth_client(
     redis_url: Optional[str] = None,
     dynamodb_table: Optional[str] = None,
     region_name: str = "us-east-1",
+    signing_key: Optional[str] = None,
+    verification_key: Optional[str] = None,
+    kid: Optional[str] = None,
 ):
     """
     Create a fully configured AuthClient.
 
     Args:
-        secret: JWT signing secret
-        algorithm: JWT algorithm
+        secret: JWT signing secret (required for HS256)
+        algorithm: JWT algorithm (default HS256, use RS256 for asymmetric)
         issuer: Token issuer
         blacklist: Blacklist backend
         session_backend: Session store backend
         redis_url: Redis URL (for redis backends)
         dynamodb_table: DynamoDB table (for dynamodb session backend)
         region_name: AWS region for DynamoDB
+        signing_key: Private PEM for signing (RS256)
+        verification_key: Public PEM for verification (RS256)
+        kid: Key ID for JWT headers
 
     Returns:
         Configured AuthClient
@@ -160,6 +175,9 @@ def create_auth_client(
         issuer=issuer,
         blacklist=blacklist,
         redis_url=redis_url,
+        signing_key=signing_key,
+        verification_key=verification_key,
+        kid=kid,
     )
 
     sessions = create_session_store(

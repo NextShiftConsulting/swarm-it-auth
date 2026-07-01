@@ -67,7 +67,7 @@ class DotEnvAdapter(CredentialPort):
         """Parse .env file into dict."""
         result = {}
 
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
 
@@ -127,7 +127,7 @@ class DotEnvAdapter(CredentialPort):
             env_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Append to file
-        with open(env_file, 'a') as f:
+        with open(env_file, 'a', encoding='utf-8') as f:
             f.write(f'\n{key}="{value}"\n')
 
         self._cache[key] = value

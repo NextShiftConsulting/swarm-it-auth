@@ -7,6 +7,12 @@ ADR-028 Stage 3: principal_kind discriminator added.
 - Legacy tokens without principal_kind decode safely as HumanUser (backward compat).
 - is_service_account remains in payloads until Stage 4 removes it from jwt_auth.
 
+RS256 migration (PAR-amended):
+- Asymmetric key support: signing_key (private PEM) + verification_key (public PEM)
+- HS256 backward compat: pass secret= for symmetric mode
+- Verifier-only mode: omit signing_key, create_token() raises RuntimeError
+- kid header: included in all issued tokens when provided
+
 Stage 4 TODOs:
 - TODO(Stage 4): remove is_service_account from JWT payload (use principal_kind instead)
 - TODO(Stage 4): add ActorChain propagation (ADR-026 Rule 6)
@@ -30,27 +36,38 @@ class JWTAuthAdapter(AuthenticationPort):
 
     Uses PyJWT for token creation and verification.
     Supports token blacklisting via pluggable BlacklistPort adapter.
+
+    Key modes:
+    - HS256 (symmetric): pass secret=, used for both signing and verification
+    - RS256 (asymmetric): pass signing_key= (private PEM) and/or
+      verification_key= (public PEM). Omit signing_key for verifier-only.
     """
 
     def __init__(
         self,
-        secret: str,
+        secret: Optional[str] = None,
         algorithm: str = "HS256",
         issuer: str = "swarm-it",
         blacklist_adapter: BlacklistPort = None,
+        signing_key: Optional[str] = None,
+        verification_key: Optional[str] = None,
+        kid: Optional[str] = None,
     ):
         """
         Initialize JWT adapter.
 
         Args:
-            secret: JWT signing secret
-            algorithm: JWT algorithm (default HS256)
+            secret: JWT signing secret (required for HS256, ignored for RS256)
+            algorithm: JWT algorithm (default HS256, use RS256 for asymmetric)
             issuer: Token issuer claim
             blacklist_adapter: Blacklist adapter (required). Use factory.create_jwt_auth()
                               for convenient defaults.
+            signing_key: Private PEM key for signing (RS256). None = verifier-only.
+            verification_key: Public PEM key for verification (RS256). Required for RS256.
+            kid: Key ID included in JWT headers. Enables key rotation.
 
         Raises:
-            ValueError: If blacklist_adapter is not provided
+            ValueError: If blacklist_adapter is not provided, or key config is invalid
         """
         if blacklist_adapter is None:
             raise ValueError(
@@ -58,10 +75,24 @@ class JWTAuthAdapter(AuthenticationPort):
                 "for convenient defaults, or inject a BlacklistPort implementation."
             )
 
-        self._secret = secret
         self._algorithm = algorithm
         self._issuer = issuer
         self._blacklist = blacklist_adapter
+        self._kid = kid
+
+        if algorithm.startswith("HS"):
+            if not secret:
+                raise ValueError("secret is required for HMAC algorithms")
+            self._signing_key = secret
+            self._verification_key = secret
+        else:
+            if not verification_key:
+                raise ValueError(
+                    f"verification_key (public PEM) is required for {algorithm}. "
+                    "Pass the public key PEM string."
+                )
+            self._signing_key = signing_key  # None = verifier-only
+            self._verification_key = verification_key
 
     def authenticate(self, token: str) -> Optional[Principal]:
         """
@@ -84,7 +115,7 @@ class JWTAuthAdapter(AuthenticationPort):
         try:
             payload = jwt.decode(
                 token,
-                self._secret,
+                self._verification_key,
                 algorithms=[self._algorithm],
                 issuer=self._issuer,
             )
@@ -161,7 +192,17 @@ class JWTAuthAdapter(AuthenticationPort):
             payload["org_id"] = principal.org_id
             payload["is_service_account"] = False  # deprecated — Stage 4 removes this
 
-        token = jwt.encode(payload, self._secret, algorithm=self._algorithm)
+        if self._signing_key is None:
+            raise RuntimeError(
+                "No signing key configured — this adapter is verifier-only. "
+                "Provide signing_key (private PEM) to enable token creation."
+            )
+        headers = {}
+        if self._kid:
+            headers["kid"] = self._kid
+        token = jwt.encode(
+            payload, self._signing_key, algorithm=self._algorithm, headers=headers or None,
+        )
         return token
 
     def verify_token(self, token: str) -> bool:
@@ -180,7 +221,7 @@ class JWTAuthAdapter(AuthenticationPort):
         try:
             jwt.decode(
                 token,
-                self._secret,
+                self._verification_key,
                 algorithms=[self._algorithm],
                 issuer=self._issuer,
             )
@@ -201,7 +242,7 @@ class JWTAuthAdapter(AuthenticationPort):
         try:
             payload = jwt.decode(
                 token,
-                self._secret,
+                self._verification_key,
                 algorithms=[self._algorithm],
                 issuer=self._issuer,
             )
