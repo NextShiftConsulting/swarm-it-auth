@@ -2,13 +2,16 @@
 
 This project includes patented technology related to the Swarm-It platform.
 
-## Patent Pending
+## Patent
 
-**Representation-Space Compatibility Theory (RSCT)** and related methods for AI/LLM execution governance are patent-pending technologies owned by Next Shift Consulting LLC.
+**Representation-Space Compatibility Theory (RSCT)** and related methods for AI/LLM
+execution governance are covered by US Patent No. 19/575,615, "Methods and Systems
+for Structured Compatibility Certification and Execution Control in One or More
+External Systems" (granted June 19, 2026, all 20 claims).
 
 ## Scope
 
-This patent-pending technology applies to:
+The patented RSCT technology is implemented in:
 - RSCT certification methodology (covered in swarm-it-api)
 - Quality gate systems for AI execution (covered in swarm-it-api)
 
