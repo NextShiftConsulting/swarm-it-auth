@@ -5,9 +5,9 @@ This project includes patented technology related to the Swarm-It platform.
 ## Patent
 
 **Representation-Space Compatibility Theory (RSCT)** and related methods for AI/LLM
-execution governance are covered by US Patent No. 19/575,615, "Methods and Systems
-for Structured Compatibility Certification and Execution Control in One or More
-External Systems" (granted June 19, 2026, all 20 claims).
+execution governance are the subject of US Patent Application No. 19/575,615,
+"Methods and Systems for Structured Compatibility Certification and Execution
+Control in One or More External Systems" (patent pending).
 
 ## Scope
 
