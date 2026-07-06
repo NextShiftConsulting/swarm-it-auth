@@ -19,7 +19,7 @@ This repository (swarm-it-auth) provides **authentication and session management
 
 ## License
 
-The code in this repository is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+The code in this repository is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 For questions about patent licensing, contact: legal@nextshiftconsulting.com
 
