@@ -65,10 +65,17 @@ def get_aws_credentials() -> dict:
     access_key = get_credential('AWS_ACCESS_KEY_ID')
     secret_key = get_credential('AWS_SECRET_ACCESS_KEY')
     if access_key and secret_key:
-        return {
+        creds = {
             'aws_access_key_id': access_key,
             'aws_secret_access_key': secret_key,
         }
+        # Temporary credentials (Lambda/STS/assumed role) also require the session
+        # token; omitting it produces INCOMPLETE creds -> auth failure. Permanent
+        # IAM-user keys have none, so include only when present.
+        session_token = get_credential('AWS_SESSION_TOKEN')
+        if session_token:
+            creds['aws_session_token'] = session_token
+        return creds
     return {}
 
 

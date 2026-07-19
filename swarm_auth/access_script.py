@@ -426,19 +426,40 @@ def get_aws_credentials() -> dict:
     Returns dict suitable for boto3 client kwargs:
         client = boto3.client('s3', region_name='us-east-1', **get_aws_credentials())
 
-    If explicit credentials are not found (e.g., in a SageMaker container with
-    an IAM role), returns an empty dict so boto3 falls through to the instance
+    If explicit credentials are not found (e.g., in a SageMaker/ECS container with
+    an instance/task IAM role that publishes creds via the container credential
+    endpoint), returns an empty dict so boto3 falls through to the instance
     metadata credential chain.
 
+    TEMPORARY credentials (AWS Lambda, STS, any assumed role) also require
+    ``aws_session_token``; it is included whenever present. Omitting it yields
+    INCOMPLETE temporary credentials -> SignatureDoesNotMatch / auth failure.
+    Lambda publishes AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
+    as environment variables, so this makes get_aws_credentials() correct in a
+    Lambda instead of returning session-token-less partial creds.
+
+    All three values resolve through the SAME AccessScript triage (env_var ->
+    dotenv -> keyfile -> k8s -> aws_secrets -> kms -> vault). In a corporate env
+    where IT locks down the metadata/env path and REQUIRES KMS, provision all
+    three (access key, secret key, and — for temporary creds — session token)
+    via the KMS source and they are picked up identically. Permanent KMS-stored
+    IAM-user keys have no session token (correctly omitted); KMS-stored assumed-
+    role creds include one.
+
     Returns:
-        Dict with aws_access_key_id and aws_secret_access_key if explicitly
-        configured, otherwise empty dict. Caller provides region_name.
+        Dict with aws_access_key_id, aws_secret_access_key, and (for temporary
+        credentials) aws_session_token if explicitly configured; otherwise empty
+        dict. Caller provides region_name.
     """
     access_key = get_credential('AWS_ACCESS_KEY_ID')
     secret_key = get_credential('AWS_SECRET_ACCESS_KEY')
     if access_key and secret_key:
-        return {
+        creds = {
             'aws_access_key_id': access_key,
             'aws_secret_access_key': secret_key,
         }
+        session_token = get_credential('AWS_SESSION_TOKEN')
+        if session_token:                       # temporary creds (Lambda/STS/assumed role)
+            creds['aws_session_token'] = session_token
+        return creds
     return {}

@@ -12,6 +12,7 @@ from swarm_auth.access_script import (
     SourceType,
     OnForbidden,
     get_credential,
+    get_aws_credentials,
 )
 
 
@@ -163,3 +164,33 @@ class TestConvenienceFunction:
         """Test get_credential with default."""
         value = get_credential("NONEXISTENT_KEY", default="default-value")
         assert value == "default-value"
+
+
+class TestGetAwsCredentials:
+    """get_aws_credentials must include the session token for TEMPORARY creds
+    (Lambda/STS/assumed role). Omitting it yields incomplete creds -> auth failure.
+    Regression guard for the session-token bug fixed 2026-07-18."""
+
+    def test_no_creds_returns_empty(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_aws_credentials() == {}
+
+    def test_permanent_keys_have_no_session_token(self):
+        env = {"AWS_ACCESS_KEY_ID": "AKIAPERM", "AWS_SECRET_ACCESS_KEY": "sk"}
+        with patch.dict(os.environ, env, clear=True):
+            creds = get_aws_credentials()
+            assert creds["aws_access_key_id"] == "AKIAPERM"
+            assert creds["aws_secret_access_key"] == "sk"
+            assert "aws_session_token" not in creds
+
+    def test_temporary_creds_include_session_token(self):
+        env = {
+            "AWS_ACCESS_KEY_ID": "ASIATEMP",
+            "AWS_SECRET_ACCESS_KEY": "sk",
+            "AWS_SESSION_TOKEN": "FwoGZXIvYXdzTEMP",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            creds = get_aws_credentials()
+            assert creds["aws_session_token"] == "FwoGZXIvYXdzTEMP"
+            # complete, boto3-ready temp creds
+            assert set(creds) == {"aws_access_key_id", "aws_secret_access_key", "aws_session_token"}
