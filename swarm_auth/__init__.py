@@ -38,7 +38,7 @@ Usage:
     auth = JWTAuthAdapter(secret="my-secret", blacklist_adapter=MemoryBlacklistAdapter())
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # P18 v4.0 - AccessScript credential triage
 from swarm_auth.access_script import (
