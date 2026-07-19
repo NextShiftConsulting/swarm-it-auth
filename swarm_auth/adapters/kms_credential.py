@@ -228,16 +228,27 @@ class KMSAdapter(CredentialPort):
 
     @classmethod
     def is_available(cls) -> bool:
-        """Check if KMS is available and configured."""
-        # Check for KMS key configuration
+        """Check if KMS is CONFIGURED — WITHOUT any AWS query.
+
+        TOUGHEST-SECURITY posture: in a locked-down corporate environment it may
+        be impossible to query AWS for credential information at all (no Secrets
+        Manager, no instance metadata, no STS), and the bootstrap principal may
+        hold ONLY ``kms:Decrypt`` on a specific key (not ``sts:GetCallerIdentity``)
+        — yet decrypting a locally-held KMS blob still works. The previous
+        implementation called ``sts.get_caller_identity()``, which is DENIED or
+        blocked in exactly that environment, so ``is_available()`` returned False
+        and the AccessScript triage SKIPPED the KMS source (``_get_adapter`` returns
+        None) — dropping the only working credential path.
+
+        Availability therefore probes configuration only: a KMS key is configured
+        and ``boto3`` is importable. The real test is the ``kms:Decrypt`` performed
+        lazily in ``retrieve()``, which fails gracefully (returns None) so the
+        triage falls through to the next source. No AWS call is made here.
+        """
         if not (os.environ.get("KMS_KEY_ID") or os.environ.get("KMS_KEY_ALIAS")):
             return False
-
-        # Check for AWS credentials
         try:
-            import boto3
-            sts = boto3.client("sts")
-            sts.get_caller_identity()
-            return True
-        except Exception:
+            import boto3  # noqa: F401  (import-only; NO client, NO STS/network call)
+        except ImportError:
             return False
+        return True

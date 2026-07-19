@@ -350,21 +350,51 @@ def test_is_available_returns_false_when_boto3_missing(monkeypatch):
         assert KMSAdapter.is_available() is False
 
 
-def test_is_available_returns_false_when_sts_fails(monkeypatch):
+def test_is_available_independent_of_sts(monkeypatch):
+    """CORRECTED CONTRACT (was test_is_available_returns_false_when_sts_fails):
+    is_available() no longer depends on STS. In the toughest lockdown STS is
+    denied/blocked but kms:Decrypt works, so availability must NOT hinge on STS.
+    A configured key + importable boto3 => available, regardless of STS."""
     monkeypatch.setenv("KMS_KEY_ID", _FAKE_KEY_ID)
     mock_b3 = MagicMock()
     mock_sts = MagicMock()
-    mock_sts.get_caller_identity.side_effect = Exception("no credentials")
-    mock_b3.client.return_value = mock_sts
-    with patch.dict(sys.modules, {"boto3": mock_b3}):
-        assert KMSAdapter.is_available() is False
-
-
-def test_is_available_returns_true_when_sts_succeeds(monkeypatch):
-    monkeypatch.setenv("KMS_KEY_ID", _FAKE_KEY_ID)
-    mock_b3 = MagicMock()
-    mock_sts = MagicMock()
-    mock_sts.get_caller_identity.return_value = {"Account": "123456789012"}
+    mock_sts.get_caller_identity.side_effect = Exception("STS denied by policy")
     mock_b3.client.return_value = mock_sts
     with patch.dict(sys.modules, {"boto3": mock_b3}):
         assert KMSAdapter.is_available() is True
+        mock_b3.client.assert_not_called()   # no client built, no STS call
+
+
+def test_is_available_true_when_key_configured(monkeypatch):
+    """Configured key + importable boto3 => available (no AWS call of any kind)."""
+    monkeypatch.setenv("KMS_KEY_ID", _FAKE_KEY_ID)
+    mock_b3 = MagicMock()
+    with patch.dict(sys.modules, {"boto3": mock_b3}):
+        assert KMSAdapter.is_available() is True
+        mock_b3.client.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# is_available — toughest-security: NO AWS query (regression guard)
+# ---------------------------------------------------------------------------
+
+def test_is_available_true_when_key_configured_no_aws_query(kms_env, mock_boto3_module):
+    """KMS is available when a key is configured + boto3 imports — WITHOUT any
+    AWS call. Guards the toughest-security fix (was calling sts.get_caller_identity,
+    which is blocked/denied in a kms:Decrypt-only lockdown)."""
+    assert KMSAdapter.is_available() is True
+    # The load-bearing assertion: is_available made NO boto3 client / STS call.
+    mock_boto3_module.client.assert_not_called()
+
+
+def test_is_available_false_when_no_key(monkeypatch, mock_boto3_module):
+    monkeypatch.delenv("KMS_KEY_ID", raising=False)
+    monkeypatch.delenv("KMS_KEY_ALIAS", raising=False)
+    assert KMSAdapter.is_available() is False
+
+
+def test_is_available_true_even_when_sts_would_fail(kms_env, mock_boto3_module):
+    """Explicit toughest-security case: even if STS is entirely broken/denied,
+    KMS availability is unaffected (it never calls STS)."""
+    mock_boto3_module.client.side_effect = Exception("STS blocked by corporate policy")
+    assert KMSAdapter.is_available() is True   # STS irrelevant; no call made
