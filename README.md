@@ -314,7 +314,6 @@ mypy swarm_auth
 ## Related Projects
 
 - [swarm-it-adk](https://github.com/NextShiftConsulting/swarm-it-adk) - Agent Development Kit (runtime enforcement)
-- [swarm-it-api](https://github.com/NextShiftConsulting/swarm-it-api) - RSCT certification API
 - [swarm-it-discovery](https://github.com/NextShiftConsulting/swarm-it-discovery) - Research discovery platform
 
 ## License
