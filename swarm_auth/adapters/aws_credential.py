@@ -110,22 +110,51 @@ class AWSSecretsAdapter(CredentialPort):
         """
         Retrieve a credential from AWS Secrets Manager.
 
+        Resolution order:
+          1. An explicit plane binding (swarm_auth.bindings) — maps the logical
+             name to an exact backing secret (name or ARN), bypassing the default
+             ``swarm-it/`` prefix and declaring whether the body is a raw string.
+          2. Otherwise the default ``<prefix><key>`` convention.
+
+        Secret bodies may be a raw string OR the adapter's ``{"value": ...}`` JSON
+        envelope; both are handled. Value is never logged.
+
         Args:
-            key: Credential key
+            key: Credential key (logical name)
 
         Returns:
             Credential value or None
         """
-        secret_id = self._get_secret_id(key)
+        try:
+            from swarm_auth.bindings import get_binding
+            binding = get_binding(key)
+        except Exception:
+            binding = None
+
+        secret_id = binding.backing if binding else self._get_secret_id(key)
+        plaintext = bool(binding and binding.plaintext)
 
         try:
             response = self._client.get_secret_value(SecretId=secret_id)
-            secret_data = json.loads(response["SecretString"])
-            return secret_data.get("value")
         except self._client.exceptions.ResourceNotFoundException:
             return None
         except Exception:
             return None
+
+        raw = response.get("SecretString")
+        if raw is None:
+            return None
+
+        # Bound-plaintext or non-JSON secret -> the raw string IS the value.
+        if plaintext:
+            return raw
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return raw
+        if isinstance(data, dict) and "value" in data:
+            return data["value"]
+        return raw
 
     def delete(self, key: str) -> bool:
         """
