@@ -25,6 +25,8 @@ def test_bound_logical_names_map_to_expected_backing():
     assert get_binding("CLOUDFLARE_DEPLOY_TOKEN").backing == "cloudflare/api-token"
     nxt = get_binding("COMMERCE_INTERNAL_KEY_NEXT")
     assert nxt.backing.endswith("swarmit/internal-service-key-next-7hZbMN")
+    cur = get_binding("COMMERCE_INTERNAL_KEY_CURRENT")
+    assert cur.backing == "swarmit/internal-service-key"  # rollback path stays on the plane
     assert all(b.plaintext for b in BINDINGS.values())
 
 

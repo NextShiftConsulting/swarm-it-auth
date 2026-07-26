@@ -43,6 +43,16 @@ BINDINGS: Dict[str, SecretBinding] = {
         plaintext=True,
         purpose="Rotation NEXT internal-service-key for the CERT_SERVICE_KEY migration",
     ),
+    "COMMERCE_INTERNAL_KEY_CURRENT": SecretBinding(
+        logical_name="COMMERCE_INTERNAL_KEY_CURRENT",
+        backing="swarmit/internal-service-key",
+        plaintext=True,
+        purpose=(
+            "Rotation ROLLBACK binding: CURRENT internal-service-key so the Commerce "
+            "CERT_SERVICE_KEY cutover can be reverted through the plane (never via "
+            "direct Secrets Manager access in the Commerce workflow)"
+        ),
+    ),
 }
 
 
